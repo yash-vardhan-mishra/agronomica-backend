@@ -127,10 +127,11 @@ router.post('/register', async (req, res) => {
             const otp = generateOTP();
             const otpHash = bcrypt.hashSync(otp, 10);
             const otpExpiration = getOtpExpirationTime()
+            const createdAt = new Date()
 
             // Insert the new user into the database
-            const insertUserSql = 'INSERT INTO Users (password_hash, email, role, otp, otp_expiration) VALUES (?, ?, ?, ?, ?)';
-            connection.query(insertUserSql, [hashedPassword, email, role, otpHash, otpExpiration], (err, result) => {
+            const insertUserSql = 'INSERT INTO Users (passwordHash, email, role, otp, otpExpiration, createdAt) VALUES (?, ?, ?, ?, ?, ?)';
+            connection.query(insertUserSql, [hashedPassword, email, role, otpHash, otpExpiration, createdAt], (err, result) => {
                 if (err) {
                     console.error('Error inserting user into database:', err);
                     return res.status(500).json({ error: 'Database error' });
@@ -307,7 +308,7 @@ router.post('/verify-reset-otp', (req, res) => {
         }
 
         const newPasswordHash = bcrypt.hashSync(newPassword, 10);
-        const updateSql = 'UPDATE users SET password_hash = ?, otp = NULL WHERE email = ?';
+        const updateSql = 'UPDATE users SET passwordHash = ?, otp = NULL WHERE email = ?';
         connection.query(updateSql, [newPasswordHash, email], (err, result) => {            
             if (err) {
                 return res.status(500).json({ error: 'Database error' });

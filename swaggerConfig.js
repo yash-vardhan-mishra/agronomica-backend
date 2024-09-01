@@ -9,6 +9,21 @@ const options = {
             version: '1.0.0',
             description: 'API documentation for Agronomica',
         },
+        components: {
+            securitySchemes: {
+              ApiKeyAuth: {
+                type: "apiKey",
+                in: "header",
+                name: "Authorization",
+                description: "Enter your API key in the format `Bearer <token>`",
+              },
+            },
+        },
+        security: [
+            {
+              ApiKeyAuth: [],
+            },
+        ],
         servers: [
             {
                 url: 'http://localhost:3000',
