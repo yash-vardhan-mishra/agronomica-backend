@@ -3,12 +3,12 @@ import 'dotenv/config'
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import connection from './db.js';
-import { sendOtpEmail } from './mailer.js';
-import { emailRegex, generateOTP, getOtpExpirationTime, passwordRegex } from './utils.js';
+import { sendEmployeeCredentials, sendOtpEmail, sendOtpEmailToFarmer } from './mailer.js';
+import { emailRegex, generateOTP, generateTempPassword, getOtpExpirationTime, passwordRegex } from './utils.js';
 import router from './router.js';
-import { authenticateToken } from './authMiddleware.js';
+import { authenticateFarmerToken } from './authMiddleware.js';
 
-const jwtSecret = process.env.JWT_SECRET
+const jwtSecret = process.env.FARMER_JWT_SECRET
 const jwtConfig = { expiresIn: '7h' };
 
 
@@ -136,7 +136,6 @@ const jwtConfig = { expiresIn: '7h' };
  *                   type: string
  *                   example: Database error
  */
-
 router.post('/farmer/register', async (req, res) => {
     const { password, email } = req.body;
 
@@ -572,7 +571,6 @@ router.post('/farmer/verify-otp', (req, res) => {
  *                   type: string
  *                   example: Server error
  */
-
 router.post('/farmer/login', (req, res) => {
     const { email, password } = req.body;
 
@@ -699,7 +697,7 @@ router.post('/farmer/login', (req, res) => {
  *                   type: string
  *                   example: "Database error"
  */
-router.post('/farmer/update-info', authenticateToken, (req, res) => {
+router.post('/farmer/update-info', authenticateFarmerToken, (req, res) => {
     const { farmerId, firstName, lastName, contactNumber } = req.body;
 
     // Validate input
@@ -806,8 +804,7 @@ router.post('/farmer/update-info', authenticateToken, (req, res) => {
  *       scheme: bearer
  *       bearerFormat: JWT
  */
-
-router.get('/farmer/get-info', authenticateToken, (req, res) => {
+router.get('/farmer/get-info', authenticateFarmerToken, (req, res) => {
     const { farmerId } = req.query;
 
     if (!farmerId) {
@@ -899,8 +896,7 @@ router.get('/farmer/get-info', authenticateToken, (req, res) => {
  *       scheme: bearer
  *       bearerFormat: JWT
  */
-
-router.post('/farmer/add-field', authenticateToken, (req, res) => {
+router.post('/farmer/add-field', authenticateFarmerToken, (req, res) => {
     const { farmerId, fieldName, fieldAddress, size, cropType } = req.body;
 
     // Validate input
@@ -936,5 +932,223 @@ router.post('/farmer/add-field', authenticateToken, (req, res) => {
         });
     });
 });
+
+/**
+ * @swagger
+ * /farmer/onboard-employee:
+ *   post:
+ *     summary: Initiate onboarding of an employee
+ *     tags: [Farmer]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               employeeEmail:
+ *                 type: string
+ *                 example: "newemployee@example.com"
+ *               employeeRole:
+ *                 type: string
+ *                 enum: [supervisor, worker]
+ *                 example: "worker"
+ *     responses:
+ *       200:
+ *         description: OTP sent to farmer's email for confirmation
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "OTP sent to farmer's email for confirmation"
+ *       400:
+ *         description: Invalid input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Invalid input"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Database error"
+ */
+router.post('/farmer/onboard-employee', authenticateFarmerToken, (req, res) => {
+    const { employeeEmail, employeeRole } = req.body;
+    const farmerId = req.user.farmerId;
+
+    // Validate email format
+    if (!emailRegex.test(employeeEmail)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    if (!employeeEmail || !employeeRole || !['supervisor', 'worker'].includes(employeeRole)) {
+        return res.status(400).json({ error: 'Invalid input' });
+    }
+
+    // Generate OTP and its hash
+    const otp = generateOTP();
+    const otpHash = bcrypt.hashSync(otp, 10);
+    const otpExpiration = getOtpExpirationTime();
+
+    // Retrieve the farmer's email using the farmerId
+    const getFarmerEmailSql = 'SELECT email FROM Farmers WHERE farmerId = ?';
+    connection.query(getFarmerEmailSql, [farmerId], async (err, results) => {
+        if (err) {
+            console.error('Error retrieving farmer email:', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ error: 'Farmer not found' });
+        }
+
+        const farmerEmail = results[0].email;
+
+        // Store OTP and expiration time for the farmer
+        const updateFarmerOtpSql = 'UPDATE Farmers SET otp = ?, otpExpiration = ? WHERE farmerId = ?';
+        connection.query(updateFarmerOtpSql, [otpHash, otpExpiration, farmerId], async (err) => {
+            if (err) {
+                console.error('Error updating OTP in database:', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            // Send OTP email to the farmer
+            try {
+                await sendOtpEmailToFarmer(farmerEmail, otp, employeeEmail);
+                res.status(200).json({ message: 'OTP sent to farmer\'s email for confirmation' });
+            } catch (err) {
+                console.error('Error sending OTP email:', err);
+                res.status(500).json({ error: 'Error sending OTP email' });
+            }
+        });
+    });
+});
+
+
+/**
+ * @swagger
+ * /farmer/onboard-employee-verify-otp:
+ *   post:
+ *     summary: Verify OTP and onboard the employee
+ *     tags: [Farmer]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               otp:
+ *                 type: string
+ *                 example: "123456"
+ *               employeeEmail:
+ *                 type: string
+ *                 example: "newemployee@example.com"
+ *               employeeRole:
+ *                 type: string
+ *                 enum: [supervisor, worker]
+ *                 example: "worker"
+ *     responses:
+ *       200:
+ *         description: Employee onboarded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Employee onboarded successfully"
+ *       400:
+ *         description: Invalid OTP or input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Invalid OTP or input"
+ *       404:
+ *         description: OTP not found or expired
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "OTP not found or expired"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Database error"
+ */
+router.post('/farmer/onboard-employee-verify-otp', authenticateFarmerToken, async (req, res) => {
+    const { otp, employeeEmail, employeeRole } = req.body;
+    const farmerId = req.user.farmerId;
+
+    if (!otp || !employeeEmail || !employeeRole || !['supervisor', 'worker'].includes(employeeRole)) {
+        return res.status(400).json({ error: 'Invalid input' });
+    }
+
+    // Retrieve farmer's OTP and expiration
+    const getFarmerOtpSql = 'SELECT otp, otpExpiration FROM Farmers WHERE farmerId = ?';
+    connection.query(getFarmerOtpSql, [farmerId], async (err, results) => {
+        if (err) {
+            console.error('Error querying the database:', err);
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        if (results.length === 0 || !bcrypt.compareSync(otp, results[0].otp) || new Date() > new Date(results[0].otpExpiration)) {
+            return res.status(404).json({ error: 'OTP not found or expired' });
+        }
+
+        // Generate temporary credentials for the employee
+        const employeePassword = generateTempPassword();
+        const hashedPassword = await bcrypt.hash(employeePassword, 10);
+
+        // Insert new employee into the database
+        const insertEmployeeSql = 'INSERT INTO Employees (farmerId, employeeRole, email, passwordHash) VALUES (?, ?, ?, ?)';
+        connection.query(insertEmployeeSql, [farmerId, employeeRole, employeeEmail, hashedPassword], async (err, result) => {
+            if (err) {
+                console.error('Error inserting employee into database:', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            const employeeId = result.insertId;
+
+            // Send credentials to the employee
+            try {
+                await sendEmployeeCredentials(employeeEmail, employeeId, employeePassword);
+                res.status(200).json({ message: 'Employee onboarded successfully' });
+            } catch (err) {
+                console.error('Error sending employee email:', err);
+                res.status(500).json({ error: 'Error sending employee email' });
+            }
+        });
+    });
+});
+
+
 
 export default router;
