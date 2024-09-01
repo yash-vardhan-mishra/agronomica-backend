@@ -81,7 +81,7 @@ const jwtConfig = { expiresIn: '7h' };
 
 /**
  * @swagger
- * /register:
+ * /farmer/register:
  *   post:
  *     summary: Register a new farmer
  *     tags: [Farmer]
@@ -137,7 +137,7 @@ const jwtConfig = { expiresIn: '7h' };
  *                   example: Database error
  */
 
-router.post('/register', async (req, res) => {
+router.post('/farmer/register', async (req, res) => {
     const { password, email } = req.body;
 
     // Validate input
@@ -207,7 +207,7 @@ router.post('/register', async (req, res) => {
 
 /**
  * @swagger
- * /reset-password:
+ * /farmer/reset-password:
  *   post:
  *     summary: Send OTP to reset password
  *     tags: [Farmer]
@@ -255,7 +255,7 @@ router.post('/register', async (req, res) => {
  *                   type: string
  *                   example: "Server error"
  */
-router.post('/reset-password', (req, res) => {
+router.post('/farmer/reset-password', (req, res) => {
     const { email } = req.body;
 
     const otp = generateOTP();
@@ -283,7 +283,7 @@ router.post('/reset-password', (req, res) => {
 
 /**
  * @swagger
- * /verify-reset-otp:
+ * /farmer/reset-password-verify-otp:
  *   post:
  *     summary: Verify OTP and reset password
  *     tags: [Farmer]
@@ -339,7 +339,7 @@ router.post('/reset-password', (req, res) => {
  *                   type: string
  *                   example: "Server error"
  */
-router.post('/verify-reset-otp', (req, res) => {
+router.post('/farmer/reset-password-verify-otp', (req, res) => {
     const { email, otp, newPassword } = req.body;
 
     // Validate password strength
@@ -379,7 +379,7 @@ router.post('/verify-reset-otp', (req, res) => {
 
 /**
  * @swagger
- * /verify-farmer:
+ * /farmer/verify-otp:
  *   post:
  *     summary: Verify OTP for farmer
  *     tags: [Farmer]
@@ -440,7 +440,7 @@ router.post('/verify-reset-otp', (req, res) => {
  *                   type: string
  *                   example: "Database error"
  */
-router.post('/verify-farmer', (req, res) => {
+router.post('/farmer/verify-otp', (req, res) => {
     const { email, otp } = req.body;
 
     // Validate input
@@ -527,7 +527,7 @@ router.post('/verify-farmer', (req, res) => {
 
 /**
  * @swagger
- * /login-farmer:
+ * /farmer/login:
  *   post:
  *     summary: Login a farmer user
  *     tags: [Farmer]
@@ -573,7 +573,7 @@ router.post('/verify-farmer', (req, res) => {
  *                   example: Server error
  */
 
-router.post('/login-farmer', (req, res) => {
+router.post('/farmer/login', (req, res) => {
     const { email, password } = req.body;
 
     // Validate input
@@ -629,7 +629,7 @@ router.post('/login-farmer', (req, res) => {
 
 /**
  * @swagger
- * /update-farmer-info:
+ * /farmer/update-info:
  *   post:
  *     summary: Update farmer information
  *     tags: [Farmer]
@@ -699,7 +699,7 @@ router.post('/login-farmer', (req, res) => {
  *                   type: string
  *                   example: "Database error"
  */
-router.post('/update-farmer-info', authenticateToken, (req, res) => {
+router.post('/farmer/update-info', authenticateToken, (req, res) => {
     const { farmerId, firstName, lastName, contactNumber } = req.body;
 
     // Validate input
@@ -749,7 +749,7 @@ router.post('/update-farmer-info', authenticateToken, (req, res) => {
 
 /**
  * @swagger
- * /get-farmer-info:
+ * /farmer/get-info:
  *   get:
  *     summary: Get farmer information
  *     tags: [Farmer]
@@ -807,7 +807,7 @@ router.post('/update-farmer-info', authenticateToken, (req, res) => {
  *       bearerFormat: JWT
  */
 
-router.get('/get-farmer-info', authenticateToken, (req, res) => {
+router.get('/farmer/get-info', authenticateToken, (req, res) => {
     const { farmerId } = req.query;
 
     if (!farmerId) {
@@ -832,7 +832,7 @@ router.get('/get-farmer-info', authenticateToken, (req, res) => {
 
 /**
  * @swagger
- * /add-field:
+ * /farmer/add-field:
  *   post:
  *     summary: Add a new field for a farmer
  *     tags: [Farmer]
@@ -900,7 +900,7 @@ router.get('/get-farmer-info', authenticateToken, (req, res) => {
  *       bearerFormat: JWT
  */
 
-router.post('/add-field', authenticateToken, (req, res) => {
+router.post('/farmer/add-field', authenticateToken, (req, res) => {
     const { farmerId, fieldName, fieldAddress, size, cropType } = req.body;
 
     // Validate input
