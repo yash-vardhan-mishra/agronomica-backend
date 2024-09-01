@@ -28,6 +28,55 @@ const jwtConfig = { expiresIn: '7h' };
  *         password:
  *           type: string
  *           description: The farmer's password
+ *     Login:
+ *       type: object
+ *       required:
+ *         - email
+ *         - password
+ *       properties:
+ *         email:
+ *           type: string
+ *           description: The user's email
+ *         password:
+ *           type: string
+ *           description: The user's password
+ *     FarmerInfo:
+ *       type: object
+ *       properties:
+ *         farmerId:
+ *           type: integer
+ *           description: The farmer's ID
+ *         firstName:
+ *           type: string
+ *           description: The farmer's first name
+ *         lastName:
+ *           type: string
+ *           description: The farmer's last name
+ *         contactNumber:
+ *           type: string
+ *           description: The farmer's contact number
+ *     Field:
+ *       type: object
+ *       properties:
+ *         fieldId:
+ *           type: integer
+ *           description: The field's ID
+ *         farmerId:
+ *           type: integer
+ *           description: The farmer's ID
+ *         fieldName:
+ *           type: string
+ *           description: The field's name
+ *         fieldAddress:
+ *           type: string
+ *           description: The field's address
+ *         size:
+ *           type: number
+ *           format: float
+ *           description: The field's size
+ *         cropType:
+ *           type: string
+ *           description: The field's crop type
  */
 
 /**
@@ -475,24 +524,6 @@ router.post('/verify-farmer', (req, res) => {
         });
     });
 });
-
-/**
- * @swagger
- * components:
- *   schemas:
- *     Login:
- *       type: object
- *       required:
- *         - email
- *         - password
- *       properties:
- *         email:
- *           type: string
- *           description: The user's email
- *         password:
- *           type: string
- *           description: The user's password
- */
 
 /**
  * @swagger
