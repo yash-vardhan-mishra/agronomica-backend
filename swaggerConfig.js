@@ -31,7 +31,7 @@ const options = {
             }
         ],
     },
-    apis: ['./common-apis.js', './farmer-apis.js'], // Paths to the API docs
+    apis: ['./farmer-apis.js'], // Paths to the API docs
 };
 
 const swaggerSpec = swaggerJSDoc(options);

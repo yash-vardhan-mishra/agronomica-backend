@@ -4,12 +4,329 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import connection from './db.js';
 import { sendOtpEmail } from './mailer.js';
-import { emailRegex, generateOTP, getOtpExpirationTime } from './utils.js';
+import { emailRegex, generateOTP, getOtpExpirationTime, passwordRegex } from './utils.js';
 import router from './router.js';
 import { authenticateToken } from './authMiddleware.js';
 
 const jwtSecret = process.env.JWT_SECRET
 const jwtConfig = { expiresIn: '7h' };
+
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     Farmer:
+ *       type: object
+ *       required:
+ *         - email
+ *         - password
+ *       properties:
+ *         email:
+ *           type: string
+ *           description: The farmer's email
+ *         password:
+ *           type: string
+ *           description: The farmer's password
+ */
+
+/**
+ * @swagger
+ * /register:
+ *   post:
+ *     summary: Register a new farmer
+ *     tags: [Farmer]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/Farmer'
+ *     responses:
+ *       201:
+ *         description: Farmer registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Farmer registered successfully
+ *                 farmerId:
+ *                   type: integer
+ *                   example: 1
+ *       400:
+ *         description: All fields are required
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: All fields are required
+ *       409:
+ *         description: Email already exists
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Email already exists
+ *       500:
+ *         description: Database error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: Database error
+ */
+
+router.post('/register', async (req, res) => {
+    const { password, email } = req.body;
+
+    // Validate input
+    if (!password || !email) {
+        return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    // Validate email format
+    if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    // Validate password strength
+    if (!passwordRegex.test(password)) {
+        return res.status(400).json({
+            error: 'Password must be at least 8 characters long, include one special character, one number, one uppercase character, and one lowercase character'
+        });
+    }
+
+    try {
+        // Check if the email already exists
+        const emailCheckSql = 'SELECT * FROM Farmers WHERE email = ?';
+        connection.query(emailCheckSql, [email], async (err, results) => {
+            if (err) {
+                console.error('Error checking email in database:', err);
+                return res.status(500).json({ error: 'Database error' });
+            }
+            if (results.length > 0) {
+                return res.status(409).json({ error: 'Email already exists' });
+            }
+
+            // Hash the password
+            const saltRounds = 10;
+            const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+            // Generate OTP and set expiration time
+            const otp = generateOTP();
+            const otpHash = bcrypt.hashSync(otp, 10);
+            const otpExpiration = getOtpExpirationTime();
+            const createdAt = new Date();
+
+            // Insert the new farmer into the database
+            const insertFarmerSql = 'INSERT INTO Farmers (passwordHash, email, otp, otpExpiration, createdAt) VALUES (?, ?, ?, ?, ?)';
+            connection.query(insertFarmerSql, [hashedPassword, email, otpHash, otpExpiration, createdAt], (err, result) => {
+                if (err) {
+                    console.error('Error inserting farmer into database:', err);
+                    return res.status(500).json({ error: 'Database error' });
+                }
+
+                // Send OTP email
+                sendOtpEmail(email, otp)
+                    .then(info => {
+                        res.status(201).json({ message: 'Farmer registered successfully', farmerId: result.insertId });
+                    })
+                    .catch(err => {
+                        console.error('Error sending email:', err);
+                        res.status(500).json({ error: 'Error sending email' });
+                    });
+            });
+        });
+    } catch (error) {
+        console.error('Error registering farmer:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+
+/**
+ * @swagger
+ * /reset-password:
+ *   post:
+ *     summary: Send OTP to reset password
+ *     tags: [Farmer]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "farmer@example.com"
+ *             required:
+ *               - email
+ *     responses:
+ *       200:
+ *         description: OTP sent successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "OTP sent successfully"
+ *       400:
+ *         description: Invalid email
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Invalid email"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Server error"
+ */
+router.post('/reset-password', (req, res) => {
+    const { email } = req.body;
+
+    const otp = generateOTP();
+    const otpHash = bcrypt.hashSync(otp, 10);
+
+    const sql = 'UPDATE Farmers SET otp = ? WHERE email = ?';
+    connection.query(sql, [otpHash, email], (err, result) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        if (result.affectedRows === 0) {
+            return res.status(400).json({ error: 'Invalid email' });
+        }
+
+        sendOtpEmail(email, otp)
+            .then(() => {
+                res.status(200).json({ message: 'OTP sent successfully' });
+            })
+            .catch((error) => {
+                res.status(500).json({ error: 'Email sending failed' });
+            });
+    });
+});
+
+/**
+ * @swagger
+ * /verify-reset-otp:
+ *   post:
+ *     summary: Verify OTP and reset password
+ *     tags: [Farmer]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: "farmer@example.com"
+ *               otp:
+ *                 type: string
+ *                 example: "1234"
+ *               newPassword:
+ *                 type: string
+ *                 example: "newPassword123"
+ *             required:
+ *               - email
+ *               - otp
+ *               - newPassword
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Password reset successfully"
+ *       400:
+ *         description: Invalid OTP or expired
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Invalid OTP or expired"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Server error"
+ */
+router.post('/verify-reset-otp', (req, res) => {
+    const { email, otp, newPassword } = req.body;
+
+    // Validate password strength
+    if (!passwordRegex.test(password)) {
+        return res.status(400).json({
+            error: 'Password must be at least 8 characters long, include one special character, one number, one uppercase character, and one lowercase character'
+        });
+    }
+
+    const sql = 'SELECT otp FROM Farmers WHERE email = ?';
+    connection.query(sql, [email], (err, result) => {
+        if (err) {
+            return res.status(500).json({ error: 'Database error' });
+        }
+
+        if (result.length === 0) {
+            return res.status(400).json({ error: 'Invalid email' });
+        }
+
+        const otpHash = result[0].otp;
+
+        if (!bcrypt.compareSync(otp, otpHash)) {
+            return res.status(400).json({ error: 'Invalid OTP or expired' });
+        }
+
+        const newPasswordHash = bcrypt.hashSync(newPassword, 10);
+        const updateSql = 'UPDATE Farmers SET passwordHash = ?, otp = NULL WHERE email = ?';
+        connection.query(updateSql, [newPasswordHash, email], (err, result) => {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+
+            res.status(200).json({ message: 'Password reset successfully' });
+        });
+    });
+});
 
 /**
  * @swagger
@@ -26,7 +343,7 @@ const jwtConfig = { expiresIn: '7h' };
  *             properties:
  *               email:
  *                 type: string
- *                 example: "user@example.com"
+ *                 example: "farmer@example.com"
  *               otp:
  *                 type: string
  *                 example: "1234"
@@ -50,6 +367,9 @@ const jwtConfig = { expiresIn: '7h' };
  *                 screen:
  *                   type: string
  *                   example: "home or profile-creation"
+ *                 farmerId:
+ *                   type: string
+ *                   example: "123"
  *       400:
  *         description: Invalid or expired OTP
  *         content:
@@ -84,8 +404,9 @@ router.post('/verify-farmer', (req, res) => {
         return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    const findUserSql = 'SELECT * FROM Users WHERE email = ? AND role = "farmer"';
-    connection.query(findUserSql, [email], async (err, results) => {
+    // Find the farmer by email
+    const findFarmerSql = 'SELECT * FROM Farmers WHERE email = ?';
+    connection.query(findFarmerSql, [email], async (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
             return res.status(500).json({ error: 'Server error' });
@@ -95,53 +416,53 @@ router.post('/verify-farmer', (req, res) => {
             return res.status(400).json({ error: 'Invalid email or OTP' });
         }
 
-        const user = results[0];
+        const farmer = results[0];
 
         // Check if OTP is expired
-        if (new Date() > new Date(user.otpExpiration)) {
+        if (new Date() > new Date(farmer.otpExpiration)) {
             return res.status(400).json({ error: 'OTP expired' });
         }
 
         // Compare OTP
-        const otpMatch = await bcrypt.compare(otp, user.otp);
+        const otpMatch = await bcrypt.compare(otp, farmer.otp);
         if (!otpMatch) {
             return res.status(400).json({ error: 'Invalid OTP' });
         }
 
         // Generate JWT token
-        const token = jwt.sign({ userId: user.userId, role: user.role }, jwtSecret, jwtConfig);
+        const token = jwt.sign({ farmerId: farmer.farmerId }, jwtSecret, jwtConfig);
 
-        // Check if farmer details exist
-        const findFarmerSql = 'SELECT * FROM Farmers WHERE userId = ?';
-        connection.query(findFarmerSql, [user.userId], (err, farmerResults) => {
+        // Check if farmer details exist in FarmerInfo
+        const findFarmerInfoSql = 'SELECT * FROM FarmerInfo WHERE farmerId = ?';
+        connection.query(findFarmerInfoSql, [farmer.farmerId], (err, farmerInfoResults) => {
             if (err) {
-                console.error('Error querying the Farmers table:', err);
+                console.error('Error querying the FarmerInfo table:', err);
                 return res.status(500).json({ error: 'Server error' });
             }
 
             let screen = 'profile-creation';
-            if (farmerResults.length > 0) {
-                const farmer = farmerResults[0];
-                if (farmer.firstName && farmer.lastName && farmer.contactNumber) {
+            if (farmerInfoResults.length > 0) {
+                const farmerInfo = farmerInfoResults[0];
+                if (farmerInfo.firstName && farmerInfo.lastName && farmerInfo.contactNumber) {
                     screen = 'home';
                 }
             }
 
-            // Insert or update auth_token in Farmers table
+            // Insert or update authToken in FarmerInfo table
             const upsertFarmerTokenSql = `
-                INSERT INTO Farmers (userId, authToken)
+                INSERT INTO FarmerInfo (farmerId, authToken)
                 VALUES (?, ?)
                 ON DUPLICATE KEY UPDATE authToken = VALUES(authToken)
             `;
-            connection.query(upsertFarmerTokenSql, [user.userId, token], (err) => {
+            connection.query(upsertFarmerTokenSql, [farmer.farmerId, token], (err) => {
                 if (err) {
-                    console.error('Error updating authToken in Farmers table:', err);
+                    console.error('Error updating authToken in FarmerInfo table:', err);
                     return res.status(500).json({ error: 'Server error' });
                 }
 
-                // Clear OTP and expiration time
-                const removeExpiredOtpsSql = 'UPDATE Users SET otp = NULL, otpExpiration = NULL WHERE userId = ?';
-                connection.query(removeExpiredOtpsSql, [user.userId], (err) => {
+                // Clear OTP and expiration time from Farmers table
+                const removeExpiredOtpsSql = 'UPDATE Farmers SET otp = NULL, otpExpiration = NULL WHERE farmerId = ?';
+                connection.query(removeExpiredOtpsSql, [farmer.farmerId], (err) => {
                     if (err) {
                         console.error('Error removing expired OTPs:', err);
                     } else {
@@ -149,7 +470,7 @@ router.post('/verify-farmer', (req, res) => {
                     }
                 });
 
-                res.status(200).json({ message: 'OTP verified successfully', token, screen, userId: user.userId });
+                res.status(200).json({ message: 'OTP verified successfully', token, screen, farmerId: farmer.farmerId });
             });
         });
     });
@@ -229,8 +550,9 @@ router.post('/login-farmer', (req, res) => {
         return res.status(400).json({ error: 'All fields are required' });
     }
 
-    const findUserSql = 'SELECT * FROM Users WHERE email = ? AND role = "farmer"';
-    connection.query(findUserSql, [email], async (err, results) => {
+    // Find the farmer by email
+    const findFarmerSql = 'SELECT * FROM Farmers WHERE email = ?';
+    connection.query(findFarmerSql, [email], async (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
             return res.status(500).json({ error: 'Server error' });
@@ -240,10 +562,10 @@ router.post('/login-farmer', (req, res) => {
             return res.status(400).json({ error: 'Invalid email or password' });
         }
 
-        const user = results[0];
+        const farmer = results[0];
 
         // Compare password
-        const passwordMatch = await bcrypt.compare(password, user.passwordHash);
+        const passwordMatch = await bcrypt.compare(password, farmer.passwordHash);
         if (!passwordMatch) {
             return res.status(400).json({ error: 'Invalid email or password' });
         }
@@ -251,11 +573,11 @@ router.post('/login-farmer', (req, res) => {
         // Generate OTP and set expiration time
         const otp = generateOTP();
         const otpHash = bcrypt.hashSync(otp, 10);
-        const otpExpiration = getOtpExpirationTime()
+        const otpExpiration = getOtpExpirationTime();
 
-        // Update user with OTP and expiration
-        const updateUserOtpSql = 'UPDATE Users SET otp = ?, otpExpiration = ? WHERE userId = ?';
-        connection.query(updateUserOtpSql, [otpHash, otpExpiration, user.userId], async (err) => {
+        // Update farmer with OTP and expiration
+        const updateFarmerOtpSql = 'UPDATE Farmers SET otp = ?, otpExpiration = ? WHERE farmerId = ?';
+        connection.query(updateFarmerOtpSql, [otpHash, otpExpiration, farmer.farmerId], async (err) => {
             if (err) {
                 console.error('Error updating OTP in database:', err);
                 return res.status(500).json({ error: 'Database error' });
@@ -287,7 +609,7 @@ router.post('/login-farmer', (req, res) => {
  *           schema:
  *             type: object
  *             properties:
- *               userId:
+ *               farmerId:
  *                 type: integer
  *                 example: 1
  *               firstName:
@@ -300,7 +622,7 @@ router.post('/login-farmer', (req, res) => {
  *                 type: string
  *                 example: "1234567890"
  *             required:
- *               - userId
+ *               - farmerId
  *               - firstName
  *               - lastName
  *               - contactNumber
@@ -347,11 +669,10 @@ router.post('/login-farmer', (req, res) => {
  *                   example: "Database error"
  */
 router.post('/update-farmer-info', authenticateToken, (req, res) => {
-    const { firstName, lastName, contactNumber } = req.body;
-    const userId = req.user.userId; // Extract userId from the authenticated user
+    const { farmerId, firstName, lastName, contactNumber } = req.body;
 
     // Validate input
-    if (!firstName || !lastName || !contactNumber) {
+    if (!farmerId || !firstName || !lastName || !contactNumber) {
         return res.status(400).json({ error: 'All fields are required' });
     }
 
@@ -362,8 +683,8 @@ router.post('/update-farmer-info', authenticateToken, (req, res) => {
     }
 
     // Check if the contact number already exists
-    const checkContactNumberSql = 'SELECT * FROM Farmers WHERE contactNumber = ? AND userId != ?';
-    connection.query(checkContactNumberSql, [contactNumber, userId], (err, results) => {
+    const checkContactNumberSql = 'SELECT * FROM FarmerInfo WHERE contactNumber = ? AND farmerId != ?';
+    connection.query(checkContactNumberSql, [contactNumber, farmerId], (err, results) => {
         if (err) {
             console.error('Error checking contact number in database:', err);
             return res.status(500).json({ error: 'Database error' });
@@ -375,11 +696,11 @@ router.post('/update-farmer-info', authenticateToken, (req, res) => {
 
         // Update farmer information
         const updateFarmerInfoSql = `
-            UPDATE Farmers
+            UPDATE FarmerInfo
             SET firstName = ?, lastName = ?, contactNumber = ?
-            WHERE userId = ?
+            WHERE farmerId = ?
         `;
-        connection.query(updateFarmerInfoSql, [firstName, lastName, contactNumber, userId], (err, results) => {
+        connection.query(updateFarmerInfoSql, [firstName, lastName, contactNumber, farmerId], (err, results) => {
             if (err) {
                 console.error('Error updating farmer information:', err);
                 return res.status(500).json({ error: 'Database error' });
@@ -405,11 +726,11 @@ router.post('/update-farmer-info', authenticateToken, (req, res) => {
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
- *         name: userId
+ *         name: farmerId
  *         required: true
  *         schema:
  *           type: integer
- *         description: The user ID of the farmer
+ *         description: The farmer ID of the farmer
  *     responses:
  *       200:
  *         description: Farmer information retrieved successfully
@@ -456,14 +777,14 @@ router.post('/update-farmer-info', authenticateToken, (req, res) => {
  */
 
 router.get('/get-farmer-info', authenticateToken, (req, res) => {
-    const { userId } = req.query;
+    const { farmerId } = req.query;
 
-    if (!userId) {
-        return res.status(400).json({ error: 'userId is required' });
+    if (!farmerId) {
+        return res.status(400).json({ error: 'farmerId is required' });
     }
 
-    const getFarmerInfoSql = 'SELECT firstName, lastName, contactNumber, farmerId FROM Farmers WHERE userId = ?';
-    connection.query(getFarmerInfoSql, [userId], (err, results) => {
+    const getFarmerInfoSql = 'SELECT firstName, lastName, contactNumber FROM FarmerInfo WHERE farmerId = ?';
+    connection.query(getFarmerInfoSql, [farmerId], (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
             return res.status(500).json({ error: 'Database error' });
@@ -556,7 +877,7 @@ router.post('/add-field', authenticateToken, (req, res) => {
         return res.status(400).json({ error: 'Invalid input' });
     }
     console.log('this happened');
-    
+
 
     // Check if field name already exists for the farmer
     const checkFieldNameSql = 'SELECT * FROM Fields WHERE farmerId = ? AND fieldName = ?';
