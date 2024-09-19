@@ -108,6 +108,7 @@ router.post('/employee/login', (req, res) => {
             sendOtpEmail(employee.email, otp)
                 .then(() => {
                     res.status(200).json({
+                        success: true,
                         screen: employee.isPasswordChanged ? 'verify-otp' : 'change-password',
                         message: 'OTP has been sent to your email. Please verify to continue.'
                     });
@@ -338,7 +339,7 @@ router.post('/employee/verify-otp', async (req, res) => {
                 return res.status(500).json({ error: 'Database error' });
             }
 
-            res.status(200).json({ message: 'OTP verified successfully', authToken });
+            res.status(200).json({ success: true, message: 'OTP verified successfully', authToken, employeeId });
         });
     });
 });
