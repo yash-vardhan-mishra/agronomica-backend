@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken')
 const connection = require('../models/db')
 const mailer = require('../utils/mailer')
 const utils = require('../../utils')
+const uuid = require('uuid')
 
 const { emailRegex, generateOTP, generateTempPassword, getOtpExpirationTime, passwordRegex } = utils;
 const { sendEmployeeCredentials, sendOtpEmail, sendOtpEmailToFarmer } = mailer
@@ -16,17 +17,18 @@ exports.register = async (req, res) => {
 
     // Validate input
     if (!password || !email) {
-        return res.status(400).json({ error: 'All fields are required' });
+        return res.status(400).json({ success: false, error: 'All fields are required' });
     }
 
     // Validate email format
     if (!emailRegex.test(email)) {
-        return res.status(400).json({ error: 'Invalid email format' });
+        return res.status(400).json({ success: false, error: 'Invalid email format' });
     }
 
     // Validate password strength
     if (!passwordRegex.test(password)) {
         return res.status(400).json({
+            success: false,
             error: 'Password must be at least 8 characters long, include one special character, one number, one uppercase character, and one lowercase character'
         });
     }
@@ -37,10 +39,10 @@ exports.register = async (req, res) => {
         connection.query(emailCheckSql, [email], async (err, results) => {
             if (err) {
                 console.error('Error checking email in database:', err);
-                return res.status(500).json({ error: 'Database error' });
+                return res.status(500).json({ success: false, error: 'Database error' });
             }
             if (results.length > 0) {
-                return res.status(409).json({ error: 'Email already exists' });
+                return res.status(409).json({ success: false, error: 'Email already exists' });
             }
 
             // Hash the password
@@ -53,28 +55,31 @@ exports.register = async (req, res) => {
             const otpExpiration = getOtpExpirationTime();
             const createdAt = new Date();
 
+            // Generate farmerId
+            const farmerId = uuid.v4();
+
             // Insert the new farmer into the database
-            const insertFarmerSql = 'INSERT INTO Farmers (passwordHash, email, otp, otpExpiration, createdAt) VALUES (?, ?, ?, ?, ?)';
-            connection.query(insertFarmerSql, [hashedPassword, email, otpHash, otpExpiration, createdAt], (err, result) => {
+            const insertFarmerSql = 'INSERT INTO Farmers (farmerId, passwordHash, email, otp, otpExpiration, createdAt) VALUES (?, ?, ?, ?, ?, ?)';
+            connection.query(insertFarmerSql, [farmerId, hashedPassword, email, otpHash, otpExpiration, createdAt], (err, result) => {
                 if (err) {
                     console.error('Error inserting farmer into database:', err);
-                    return res.status(500).json({ error: 'Database error' });
+                    return res.status(500).json({ success: false, error: 'Database error' });
                 }
 
                 // Send OTP email
                 sendOtpEmail(email, otp)
                     .then(info => {
-                        res.status(201).json({ message: 'Farmer registered successfully', farmerId: result.insertId });
+                        res.status(201).json({ success: true, message: 'Farmer registered successfully' });
                     })
                     .catch(err => {
                         console.error('Error sending email:', err);
-                        res.status(500).json({ error: 'Error sending email' });
+                        res.status(500).json({ success: false, error: 'Error sending email' });
                     });
             });
         });
     } catch (error) {
         console.error('Error registering farmer:', error);
-        res.status(500).json({ error: 'Server error' });
+        res.status(500).json({ success: false, error: 'Server error' });
     }
 }
 
@@ -87,19 +92,19 @@ exports.resetPassword = (req, res) => {
     const sql = 'UPDATE Farmers SET otp = ? WHERE email = ?';
     connection.query(sql, [otpHash, email], (err, result) => {
         if (err) {
-            return res.status(500).json({ error: 'Database error' });
+            return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (result.affectedRows === 0) {
-            return res.status(400).json({ error: 'Invalid email' });
+            return res.status(400).json({ success: false, error: 'Invalid email' });
         }
 
         sendOtpEmail(email, otp)
             .then(() => {
-                res.status(200).json({ message: 'OTP sent successfully' });
+                res.status(200).json({ success: true, message: 'OTP sent successfully' });
             })
             .catch((error) => {
-                res.status(500).json({ error: 'Email sending failed' });
+                res.status(500).json({ success: false, error: 'Email sending failed' });
             });
     });
 }
@@ -108,8 +113,9 @@ exports.resetPasswordVerifyOtp = (req, res) => {
     const { email, otp, newPassword } = req.body;
 
     // Validate password strength
-    if (!passwordRegex.test(password)) {
+    if (!passwordRegex.test(newPassword)) {
         return res.status(400).json({
+            success: false,
             error: 'Password must be at least 8 characters long, include one special character, one number, one uppercase character, and one lowercase character'
         });
     }
@@ -117,27 +123,27 @@ exports.resetPasswordVerifyOtp = (req, res) => {
     const sql = 'SELECT otp FROM Farmers WHERE email = ?';
     connection.query(sql, [email], (err, result) => {
         if (err) {
-            return res.status(500).json({ error: 'Database error' });
+            return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (result.length === 0) {
-            return res.status(400).json({ error: 'Invalid email' });
+            return res.status(400).json({ success: false, error: 'Invalid email' });
         }
 
         const otpHash = result[0].otp;
 
         if (!bcrypt.compareSync(otp, otpHash)) {
-            return res.status(400).json({ error: 'Invalid OTP or expired' });
+            return res.status(400).json({ success: false, error: 'Invalid OTP or expired' });
         }
 
         const newPasswordHash = bcrypt.hashSync(newPassword, 10);
         const updateSql = 'UPDATE Farmers SET passwordHash = ?, otp = NULL WHERE email = ?';
         connection.query(updateSql, [newPasswordHash, email], (err, result) => {
             if (err) {
-                return res.status(500).json({ error: 'Database error' });
+                return res.status(500).json({ success: false, error: 'Database error' });
             }
 
-            res.status(200).json({ message: 'Password reset successfully' });
+            res.status(200).json({ success: true, message: 'Password reset successfully' });
         });
     });
 }
@@ -147,12 +153,12 @@ exports.verifyOtp = (req, res) => {
 
     // Validate input
     if (!email || !otp) {
-        return res.status(400).json({ error: 'All fields are required' });
+        return res.status(400).json({ success: false, error: 'All fields are required' });
     }
 
     // Validate email format
     if (!emailRegex.test(email)) {
-        return res.status(400).json({ error: 'Invalid email format' });
+        return res.status(400).json({ success: false, error: 'Invalid email format' });
     }
 
     // Find the farmer by email
@@ -160,24 +166,24 @@ exports.verifyOtp = (req, res) => {
     connection.query(findFarmerSql, [email], async (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
-            return res.status(500).json({ error: 'Server error' });
+            return res.status(500).json({ success: false, error: 'Server error' });
         }
 
         if (results.length === 0) {
-            return res.status(400).json({ error: 'Invalid email or OTP' });
+            return res.status(400).json({ success: false, error: 'Invalid email or OTP' });
         }
 
         const farmer = results[0];
 
         // Check if OTP is expired
         if (new Date() > new Date(farmer.otpExpiration)) {
-            return res.status(400).json({ error: 'OTP expired' });
+            return res.status(400).json({ success: false, error: 'OTP expired' });
         }
 
         // Compare OTP
         const otpMatch = await bcrypt.compare(otp, farmer.otp);
         if (!otpMatch) {
-            return res.status(400).json({ error: 'Invalid OTP' });
+            return res.status(400).json({ success: false, error: 'Invalid OTP' });
         }
 
         // Generate JWT token
@@ -188,7 +194,7 @@ exports.verifyOtp = (req, res) => {
         connection.query(findFarmerInfoSql, [farmer.farmerId], (err, farmerInfoResults) => {
             if (err) {
                 console.error('Error querying the FarmerInfo table:', err);
-                return res.status(500).json({ error: 'Server error' });
+                return res.status(500).json({ success: false, error: 'Server error' });
             }
 
             let screen = 'profile-creation';
@@ -208,7 +214,7 @@ exports.verifyOtp = (req, res) => {
             connection.query(upsertFarmerTokenSql, [farmer.farmerId, token], (err) => {
                 if (err) {
                     console.error('Error updating authToken in FarmerInfo table:', err);
-                    return res.status(500).json({ error: 'Server error' });
+                    return res.status(500).json({ success: false, error: 'Server error' });
                 }
 
                 // Clear OTP and expiration time from Farmers table
@@ -221,7 +227,7 @@ exports.verifyOtp = (req, res) => {
                     }
                 });
 
-                res.status(200).json({ message: 'OTP verified successfully', token, screen, farmerId: farmer.farmerId });
+                res.status(200).json({ success: true, message: 'OTP verified successfully', token, screen });
             });
         });
     });
@@ -232,7 +238,7 @@ exports.login = (req, res) => {
 
     // Validate input
     if (!email || !password) {
-        return res.status(400).json({ error: 'All fields are required' });
+        return res.status(400).json({ success: false, error: 'All fields are required' });
     }
 
     // Find the farmer by email
@@ -240,11 +246,11 @@ exports.login = (req, res) => {
     connection.query(findFarmerSql, [email], async (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
-            return res.status(500).json({ error: 'Server error' });
+            return res.status(500).json({ success: false, error: 'Server error' });
         }
 
         if (results.length === 0) {
-            return res.status(400).json({ error: 'Invalid email or password' });
+            return res.status(400).json({ success: false, error: 'Invalid email or password' });
         }
 
         const farmer = results[0];
@@ -252,7 +258,7 @@ exports.login = (req, res) => {
         // Compare password
         const passwordMatch = await bcrypt.compare(password, farmer.passwordHash);
         if (!passwordMatch) {
-            return res.status(400).json({ error: 'Invalid email or password' });
+            return res.status(400).json({ success: false, error: 'Invalid email or password' });
         }
 
         // Generate OTP and set expiration time
@@ -265,16 +271,16 @@ exports.login = (req, res) => {
         connection.query(updateFarmerOtpSql, [otpHash, otpExpiration, farmer.farmerId], async (err) => {
             if (err) {
                 console.error('Error updating OTP in database:', err);
-                return res.status(500).json({ error: 'Database error' });
+                return res.status(500).json({ success: false, error: 'Database error' });
             }
 
             // Send OTP email
             try {
                 await sendOtpEmail(email, otp);
-                res.status(200).json({ message: 'Farmer logged in successfully, OTP sent' });
+                res.status(200).json({ success: true, message: 'Farmer logged in successfully, OTP sent' });
             } catch (err) {
                 console.error('Error sending email:', err);
-                res.status(500).json({ error: 'Error sending email' });
+                res.status(500).json({ success: false, error: 'Error sending email' });
             }
         });
     });
@@ -285,13 +291,13 @@ exports.updateInfo = (req, res) => {
 
     // Validate input
     if (!farmerId || !firstName || !lastName || !contactNumber) {
-        return res.status(400).json({ error: 'All fields are required' });
+        return res.status(400).json({ success: false, error: 'All fields are required' });
     }
 
     // Validate contact number format (NZ and Australia)
     const contactNumberRegex = /^(\+?64|0)[2-9]\d{7,9}$|^(\+?61|0)[2-9]\d{8,9}$/;
     if (!contactNumberRegex.test(contactNumber)) {
-        return res.status(400).json({ error: 'Invalid contact number format' });
+        return res.status(400).json({ success: false, error: 'Invalid contact number format' });
     }
 
     // Check if the contact number already exists
@@ -299,11 +305,11 @@ exports.updateInfo = (req, res) => {
     connection.query(checkContactNumberSql, [contactNumber, farmerId], (err, results) => {
         if (err) {
             console.error('Error checking contact number in database:', err);
-            return res.status(500).json({ error: 'Database error' });
+            return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (results.length > 0) {
-            return res.status(409).json({ error: 'Contact number already exists' });
+            return res.status(409).json({ success: false, error: 'Contact number already exists' });
         }
 
         // Update farmer information
@@ -315,14 +321,14 @@ exports.updateInfo = (req, res) => {
         connection.query(updateFarmerInfoSql, [firstName, lastName, contactNumber, farmerId], (err, results) => {
             if (err) {
                 console.error('Error updating farmer information:', err);
-                return res.status(500).json({ error: 'Database error' });
+                return res.status(500).json({ success: false, error: 'Database error' });
             }
 
             if (results.affectedRows === 0) {
-                return res.status(404).json({ error: 'Farmer not found' });
+                return res.status(404).json({ success: false, error: 'Farmer not found' });
             }
 
-            res.status(200).json({ message: 'Farmer information updated successfully' });
+            res.status(200).json({ success: true, message: 'Farmer information updated successfully' });
         });
     });
 }
@@ -331,18 +337,18 @@ exports.getInfo = (req, res) => {
     const { farmerId } = req.query;
 
     if (!farmerId) {
-        return res.status(400).json({ error: 'farmerId is required' });
+        return res.status(400).json({ success: false, error: 'farmerId is required' });
     }
 
     const getFarmerInfoSql = 'SELECT firstName, lastName, contactNumber FROM FarmerInfo WHERE farmerId = ?';
     connection.query(getFarmerInfoSql, [farmerId], (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
-            return res.status(500).json({ error: 'Database error' });
+            return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (results.length === 0) {
-            return res.status(404).json({ error: 'Farmer not found' });
+            return res.status(404).json({ success: false, error: 'Farmer not found' });
         }
 
         const farmerInfo = results[0];
@@ -357,32 +363,33 @@ exports.addField = (req, res) => {
     if (!farmerId || !fieldName || !fieldAddress || !size) {
         return res.status(400).json({ error: 'Invalid input' });
     }
-    console.log('this happened');
-
 
     // Check if field name already exists for the farmer
     const checkFieldNameSql = 'SELECT * FROM Fields WHERE farmerId = ? AND fieldName = ?';
     connection.query(checkFieldNameSql, [farmerId, fieldName], (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
-            return res.status(500).json({ error: 'Database error' });
+            return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (results.length > 0) {
-            return res.status(400).json({ error: 'Field name already exists for this farmer' });
+            return res.status(400).json({ success: false, error: 'Field name already exists for this farmer' });
         }
 
+        // Generate fieldId
+        const fieldId = uuid.v4();
+
         // Insert new field if name is unique for the farmer
-        const addFieldSql = 'INSERT INTO Fields (farmerId, fieldName, fieldAddress, size, cropType) VALUES (?, ?, ?, ?, ?)';
-        const fieldValues = [farmerId, fieldName, fieldAddress, size, cropType || null];
+        const addFieldSql = 'INSERT INTO Fields (fieldId, farmerId, fieldName, fieldAddress, size, cropType) VALUES (?, ?, ?, ?, ?, ?)';
+        const fieldValues = [fieldId, farmerId, fieldName, fieldAddress, size, cropType || null];
 
         connection.query(addFieldSql, fieldValues, (err, results) => {
             if (err) {
                 console.error('Error inserting into the database:', err);
-                return res.status(500).json({ error: 'Database error' });
+                return res.status(500).json({ success: false, error: 'Database error' });
             }
 
-            res.status(201).json({ message: 'Field added successfully' });
+            res.status(201).json({ success: true, message: 'Field added successfully' });
         });
     });
 }
@@ -393,11 +400,11 @@ exports.onboardEmployee = (req, res) => {
 
     // Validate email format
     if (!emailRegex.test(employeeEmail)) {
-        return res.status(400).json({ error: 'Invalid email format' });
+        return res.status(400).json({ success: false, error: 'Invalid email format' });
     }
 
     if (!employeeEmail || !employeeRole || !['supervisor', 'worker'].includes(employeeRole)) {
-        return res.status(400).json({ error: 'Invalid input' });
+        return res.status(400).json({ success: false, error: 'Invalid input' });
     }
 
     // Generate OTP and its hash
@@ -410,11 +417,11 @@ exports.onboardEmployee = (req, res) => {
     connection.query(getFarmerEmailSql, [farmerId], async (err, results) => {
         if (err) {
             console.error('Error retrieving farmer email:', err);
-            return res.status(500).json({ error: 'Database error' });
+            return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (results.length === 0) {
-            return res.status(404).json({ error: 'Farmer not found' });
+            return res.status(404).json({ success: false, error: 'Farmer not found' });
         }
 
         const farmerEmail = results[0].email;
@@ -424,27 +431,27 @@ exports.onboardEmployee = (req, res) => {
         connection.query(updateFarmerOtpSql, [otpHash, otpExpiration, farmerId], async (err) => {
             if (err) {
                 console.error('Error updating OTP in database:', err);
-                return res.status(500).json({ error: 'Database error' });
+                return res.status(500).json({ success: false, error: 'Database error' });
             }
 
             // Send OTP email to the farmer
             try {
                 await sendOtpEmailToFarmer(farmerEmail, otp, employeeEmail);
-                res.status(200).json({ message: 'OTP sent to farmer\'s email for confirmation' });
+                res.status(200).json({ success: true, message: 'OTP sent to farmer\'s email for confirmation' });
             } catch (err) {
                 console.error('Error sending OTP email:', err);
-                res.status(500).json({ error: 'Error sending OTP email' });
+                res.status(500).json({ success: false, error: 'Error sending OTP email' });
             }
         });
     });
 }
 
-exports.onboardEmployeeVerifyOtp =  async (req, res) => {
+exports.onboardEmployeeVerifyOtp = async (req, res) => {
     const { otp, employeeEmail, employeeRole } = req.body;
     const farmerId = req.user.farmerId;
 
     if (!otp || !employeeEmail || !employeeRole || !['supervisor', 'worker'].includes(employeeRole)) {
-        return res.status(400).json({ error: 'Invalid input' });
+        return res.status(400).json({ success: false, error: 'Invalid input' });
     }
 
     // Retrieve farmer's OTP and expiration
@@ -452,34 +459,35 @@ exports.onboardEmployeeVerifyOtp =  async (req, res) => {
     connection.query(getFarmerOtpSql, [farmerId], async (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
-            return res.status(500).json({ error: 'Database error' });
+            return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (results.length === 0 || !bcrypt.compareSync(otp, results[0].otp) || new Date() > new Date(results[0].otpExpiration)) {
-            return res.status(404).json({ error: 'OTP not found or expired' });
+            return res.status(404).json({ success: false, error: 'OTP not found or expired' });
         }
 
         // Generate temporary credentials for the employee
         const employeePassword = generateTempPassword();
         const hashedPassword = await bcrypt.hash(employeePassword, 10);
 
+        // Generate employeeId
+        const employeeId = uuid.v4();
+
         // Insert new employee into the database
-        const insertEmployeeSql = 'INSERT INTO Employees (farmerId, employeeRole, email, passwordHash) VALUES (?, ?, ?, ?)';
-        connection.query(insertEmployeeSql, [farmerId, employeeRole, employeeEmail, hashedPassword], async (err, result) => {
+        const insertEmployeeSql = 'INSERT INTO Employees (employeeId, farmerId, employeeRole, email, passwordHash) VALUES (?, ?, ?, ?, ?)';
+        connection.query(insertEmployeeSql, [employeeId, farmerId, employeeRole, employeeEmail, hashedPassword], async (err, result) => {
             if (err) {
                 console.error('Error inserting employee into database:', err);
-                return res.status(500).json({ error: 'Database error' });
+                return res.status(500).json({ success: false, error: 'Database error' });
             }
-
-            const employeeId = result.insertId;
 
             // Send credentials to the employee
             try {
                 await sendEmployeeCredentials(employeeEmail, employeeId, employeePassword);
-                res.status(200).json({ message: 'Employee onboarded successfully' });
+                res.status(200).json({ success: true, message: 'Employee onboarded successfully' });
             } catch (err) {
                 console.error('Error sending employee email:', err);
-                res.status(500).json({ error: 'Error sending employee email' });
+                res.status(500).json({ success: false, error: 'Error sending employee email' });
             }
         });
     });

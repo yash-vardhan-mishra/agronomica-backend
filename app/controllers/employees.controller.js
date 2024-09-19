@@ -6,7 +6,7 @@ const mailer = require('../utils/mailer');
 const utils = require('../../utils');
 const connection = require('../models/db');
 
-const {generateOTP, passwordRegex} = utils
+const { generateOTP, passwordRegex } = utils
 const { sendOtpEmail } = mailer
 
 const jwtSecret = process.env.EMPLOYEE_JWT_SECRET
@@ -16,7 +16,7 @@ exports.login = (req, res) => {
     const { employeeId, password } = req.body;
 
     if (!employeeId || !password) {
-        return res.status(400).json({ error: 'employeeId and password are required' });
+        return res.status(400).json({ success: false, error: 'employeeId and password are required' });
     }
 
     // Check if the employee exists
@@ -24,11 +24,11 @@ exports.login = (req, res) => {
     connection.query(getEmployeeSql, [employeeId], async (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
-            return res.status(500).json({ error: 'Database error' });
+            return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (results.length === 0) {
-            return res.status(400).json({ error: 'Invalid employeeId or password' });
+            return res.status(400).json({ success: false, error: 'Invalid employeeId or password' });
         }
 
         const employee = results[0];
@@ -36,7 +36,7 @@ exports.login = (req, res) => {
         // Check the password
         const passwordMatch = await bcrypt.compare(password, employee.passwordHash);
         if (!passwordMatch) {
-            return res.status(400).json({ error: 'Invalid employeeId or password' });
+            return res.status(400).json({ success: false, error: 'Invalid employeeId or password' });
         }
 
         // Generate OTP and send it to the employee's email
@@ -49,7 +49,7 @@ exports.login = (req, res) => {
         connection.query(updateOtpSql, [otpHash, otpExpiration, employeeId], (err) => {
             if (err) {
                 console.error('Error updating OTP in database:', err);
-                return res.status(500).json({ error: 'Database error' });
+                return res.status(500).json({ success: false, error: 'Database error' });
             }
 
             // Send OTP email
@@ -63,7 +63,7 @@ exports.login = (req, res) => {
                 })
                 .catch(err => {
                     console.error('Error sending OTP email:', err);
-                    res.status(500).json({ error: 'Error sending OTP email' });
+                    res.status(500).json({ success: false, error: 'Error sending OTP email' });
                 });
         });
     });
@@ -73,12 +73,12 @@ exports.changePassword = async (req, res) => {
     const { employeeId, tempPassword, newPassword, otp } = req.body;
 
     if (!employeeId || !tempPassword || !newPassword || !otp) {
-        return res.status(400).json({ error: 'All fields are required' });
+        return res.status(400).json({ success: false, error: 'All fields are required' });
     }
 
     // Validate new password format
     if (!passwordRegex.test(newPassword)) {
-        return res.status(400).json({ error: 'New password must be at least 8 characters long, include an uppercase letter, a lowercase letter, a number, and a special character' });
+        return res.status(400).json({ success: false, error: 'New password must be at least 8 characters long, include an uppercase letter, a lowercase letter, a number, and a special character' });
     }
 
     // Check if the employee exists and the OTP is valid
@@ -86,11 +86,11 @@ exports.changePassword = async (req, res) => {
     connection.query(getEmployeeSql, [employeeId], async (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
-            return res.status(500).json({ error: 'Database error' });
+            return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (results.length === 0) {
-            return res.status(400).json({ error: 'Invalid employeeId' });
+            return res.status(400).json({ success: false, error: 'Invalid employeeId' });
         }
 
         const employee = results[0];
@@ -98,7 +98,7 @@ exports.changePassword = async (req, res) => {
         // Verify OTP
         const otpMatch = await bcrypt.compare(otp, employee.otp);
         if (!otpMatch || new Date() > new Date(employee.otpExpiration)) {
-            return res.status(400).json({ error: 'Invalid or expired OTP' });
+            return res.status(400).json({ success: false, error: 'Invalid or expired OTP' });
         }
 
         // Hash the new password
@@ -113,7 +113,7 @@ exports.changePassword = async (req, res) => {
         connection.query(updatePasswordSql, [hashedNewPassword, employeeId], (err) => {
             if (err) {
                 console.error('Error updating password in database:', err);
-                return res.status(500).json({ error: 'Database error' });
+                return res.status(500).json({ success: false, error: 'Database error' });
             }
 
             // Update EmployeeInfo with authToken
@@ -121,10 +121,11 @@ exports.changePassword = async (req, res) => {
             connection.query(updateEmployeeInfoSql, [authToken, employeeId], (err) => {
                 if (err) {
                     console.error('Error updating authToken in database:', err);
-                    return res.status(500).json({ error: 'Database error' });
+                    return res.status(500).json({ success: false, error: 'Database error' });
                 }
 
                 res.status(200).json({
+                    success: true,
                     message: 'Password changed successfully',
                     authToken
                 });
@@ -137,7 +138,7 @@ exports.verifyOtp = async (req, res) => {
     const { employeeId, otp } = req.body;
 
     if (!employeeId || !otp) {
-        return res.status(400).json({ error: 'Employee ID and OTP are required' });
+        return res.status(400).json({ success: false, error: 'Employee ID and OTP are required' });
     }
 
     // Fetch the stored OTP and expiration time from the database
@@ -145,24 +146,24 @@ exports.verifyOtp = async (req, res) => {
     connection.query(fetchOtpSql, [employeeId], async (err, results) => {
         if (err) {
             console.error('Error querying OTP in database:', err);
-            return res.status(500).json({ error: 'Database error' });
+            return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (results.length === 0) {
-            return res.status(404).json({ error: 'Employee not found' });
+            return res.status(404).json({ success: false, error: 'Employee not found' });
         }
 
         const { otp: storedOtp, otpExpiration } = results[0];
 
         // Check if the OTP is expired
         if (new Date() > new Date(otpExpiration)) {
-            return res.status(400).json({ error: 'OTP has expired' });
+            return res.status(400).json({ success: false, error: 'OTP has expired' });
         }
 
         // Verify the OTP
         const isOtpValid = await bcrypt.compare(otp, storedOtp);
         if (!isOtpValid) {
-            return res.status(400).json({ error: 'Invalid OTP' });
+            return res.status(400).json({ success: false, error: 'Invalid OTP' });
         }
 
         // Generate auth token
@@ -173,7 +174,7 @@ exports.verifyOtp = async (req, res) => {
         connection.query(updateEmployeeSql, [employeeId], (err) => {
             if (err) {
                 console.error('Error updating OTP status in database:', err);
-                return res.status(500).json({ error: 'Database error' });
+                return res.status(500).json({ success: false, error: 'Database error' });
             }
 
             res.status(200).json({ success: true, message: 'OTP verified successfully', authToken, employeeId });

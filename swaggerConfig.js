@@ -26,10 +26,11 @@ const options = {
         ],
         servers: [
             {
-                url: 'http://localhost:3000',
+                url: `http://localhost:${process.env.PORT}`,
                 description: 'Local server'
             }
         ],
+        basePath: '/'
     },
     apis: ['./app/routes/employees.routes.js', './app/routes/farmers.routes.js'], // Paths to the API docs
 };

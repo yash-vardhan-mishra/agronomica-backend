@@ -10,7 +10,11 @@ require('./app/utils/cron.js')
 dotenv.config();
 
 const app = express();
-app.use(cors());
+// Enable CORS
+const corsOptions = {
+    origin: '*', // Allow requests from this origin
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
