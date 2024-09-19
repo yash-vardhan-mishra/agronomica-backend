@@ -1,9 +1,9 @@
 // db.js
-import 'dotenv/config'
-import { createConnection } from 'mysql2';
+require('dotenv/config')
+const sql = require('mysql2')
 
 // Create a connection to the database
-const connection = createConnection({
+const connection = sql.createConnection({
     host: process.env.DB_HOST,      
     user: process.env.DB_USER,  
     password: process.env.DB_PASS, 
@@ -19,4 +19,4 @@ connection.connect((err) => {
     console.log('Connected to the database as id ' + connection.threadId);
 });
 
-export default connection;
+module.exports = connection;

@@ -1,14 +1,14 @@
-export const generateOTP = () => {
+exports.generateOTP = () => {
     return Math.floor(1000 + Math.random() * 9000).toString();
 };
 
-export const getOtpExpirationTime = ()=>{
+exports.getOtpExpirationTime = ()=>{
     return new Date(Date.now() + 5 * 60 * 1000); // 5 minutes from now
 }
 
-export const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+exports.emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&_]{8,}$/;
+exports.passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&_]{8,}$/;
 
 /**
  * Generates a temporary password.
@@ -22,7 +22,7 @@ export const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Z
  * const tempPassword = generateTempPassword();
  * console.log('Generated temporary password:', tempPassword);
  */
-export const generateTempPassword = () => {
+exports.generateTempPassword = () => {
     const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()';
     let tempPassword = '';
     for (let i = 0; i < 8; i++) {

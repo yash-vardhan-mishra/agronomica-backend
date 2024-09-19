@@ -1,70 +1,18 @@
-// employee-apis.js
-import 'dotenv/config'
-import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import connection from './db.js';
-import { sendOtpEmail } from './mailer.js';
-import { generateOTP, passwordRegex } from './utils.js';
-import router from './router.js';
+// employees.controller.js
+require('dotenv/config')
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const mailer = require('../utils/mailer');
+const utils = require('../../utils');
+const connection = require('../models/db');
+
+const {generateOTP, passwordRegex} = utils
+const { sendOtpEmail } = mailer
 
 const jwtSecret = process.env.EMPLOYEE_JWT_SECRET
 const jwtConfig = { expiresIn: '7h' };
 
-/**
- * @swagger
- * /employee/login:
- *   post:
- *     summary: Employee login
- *     tags: [Employee]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               employeeId:
- *                 type: string
- *                 example: "E123"
- *               password:
- *                 type: string
- *                 example: "TempP@ss123"
- *     responses:
- *       200:
- *         description: Login successful or require password change
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 screen:
- *                   type: string
- *                   example: "change-password"
- *                 message:
- *                   type: string
- *                   example: "Please change your temporary password"
- *       400:
- *         description: Invalid employeeId or password
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Invalid employeeId or password"
- *       500:
- *         description: Internal server error
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Database error"
- */
-router.post('/employee/login', (req, res) => {
+exports.login = (req, res) => {
     const { employeeId, password } = req.body;
 
     if (!employeeId || !password) {
@@ -119,69 +67,9 @@ router.post('/employee/login', (req, res) => {
                 });
         });
     });
-});
+}
 
-/**
- * @swagger
- * /employee/change-password:
- *   post:
- *     summary: Change employee password
- *     tags: [Employee]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               employeeId:
- *                 type: string
- *                 example: "E123"
- *               tempPassword:
- *                 type: string
- *                 example: "TempP@ss123"
- *               newPassword:
- *                 type: string
- *                 example: "NewP@ss456"
- *               otp:
- *                 type: string
- *                 example: "123456"
- *     responses:
- *       200:
- *         description: Password changed successfully and authToken provided
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "Password changed successfully"
- *                 authToken:
- *                   type: string
- *                   example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
- *       400:
- *         description: Invalid data or OTP
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Invalid OTP or password"
- *       500:
- *         description: Internal server error
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Database error"
- */
-router.post('/employee/change-password', async (req, res) => {
+exports.changePassword = async (req, res) => {
     const { employeeId, tempPassword, newPassword, otp } = req.body;
 
     if (!employeeId || !tempPassword || !newPassword || !otp) {
@@ -243,60 +131,9 @@ router.post('/employee/change-password', async (req, res) => {
             });
         });
     });
-});
+}
 
-/**
- * @swagger
- * /employee/verify-otp:
- *   post:
- *     summary: Verify OTP for employee login
- *     tags: [Employee]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               employeeId:
- *                 type: string
- *                 example: "E123"
- *               otp:
- *                 type: string
- *                 example: "123456"
- *     responses:
- *       200:
- *         description: OTP verified successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: "OTP verified successfully"
- *       400:
- *         description: Invalid OTP
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Invalid or expired OTP"
- *       500:
- *         description: Internal server error
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 error:
- *                   type: string
- *                   example: "Database error"
- */
-router.post('/employee/verify-otp', async (req, res) => {
+exports.verifyOtp = async (req, res) => {
     const { employeeId, otp } = req.body;
 
     if (!employeeId || !otp) {
@@ -342,6 +179,4 @@ router.post('/employee/verify-otp', async (req, res) => {
             res.status(200).json({ success: true, message: 'OTP verified successfully', authToken, employeeId });
         });
     });
-});
-
-export default router;
+};

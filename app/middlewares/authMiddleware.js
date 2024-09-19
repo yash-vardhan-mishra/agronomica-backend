@@ -1,8 +1,8 @@
-import jwt from 'jsonwebtoken';
+const jwt = require('jsonwebtoken');
 
 const jwtSecret = process.env.FARMER_JWT_SECRET;
 
-export const authenticateFarmerToken = (req, res, next) => {
+exports.authenticateFarmerToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
 

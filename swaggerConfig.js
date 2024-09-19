@@ -1,5 +1,5 @@
 // swaggerConfig.js
-import swaggerJSDoc from 'swagger-jsdoc';
+const swaggerJSDoc = require('swagger-jsdoc');
 
 const options = {
     definition: {
@@ -11,17 +11,17 @@ const options = {
         },
         components: {
             securitySchemes: {
-              ApiKeyAuth: {
-                type: "apiKey",
-                in: "header",
-                name: "Authorization",
-                description: "Enter your API key in the format `Bearer <token>`",
-              },
+                ApiKeyAuth: {
+                    type: "apiKey",
+                    in: "header",
+                    name: "Authorization",
+                    description: "Enter your API key in the format `Bearer <token>`",
+                },
             },
         },
         security: [
             {
-              ApiKeyAuth: [],
+                ApiKeyAuth: [],
             },
         ],
         servers: [
@@ -31,9 +31,9 @@ const options = {
             }
         ],
     },
-    apis: ['./farmer-apis.js', 'employee-apis.js'], // Paths to the API docs
+    apis: ['./app/routes/employees.routes.js', './app/routes/farmers.routes.js'], // Paths to the API docs
 };
 
 const swaggerSpec = swaggerJSDoc(options);
 
-export default swaggerSpec;
+module.exports = swaggerSpec;

@@ -1,23 +1,25 @@
 // server.js
-import express from 'express';
-import { serve, setup } from 'swagger-ui-express';
-import dotenv from 'dotenv';
-
-import routes from './routes.js';
-import swaggerSpec from './swaggerConfig.js';
-import './cron.js';
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const swaggerUiExpress = require('swagger-ui-express');
+const swaggerSpec = require('./swaggerConfig');
+require('./app/utils/cron.js')
 
 // Load environment variables from .env file
 dotenv.config();
 
 const app = express();
+app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Swagger setup
-app.use('/api-docs', serve, setup(swaggerSpec));
+app.use('/api-docs', swaggerUiExpress.serve, swaggerUiExpress.setup(swaggerSpec));
 
 // Use the routes defined in routes.js
-app.use('/', routes);
+require('./app/routes/employees.routes.js')(app);
+require('./app/routes/farmers.routes.js')(app);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

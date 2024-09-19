@@ -1,6 +1,6 @@
 // mailer.js
-import 'dotenv/config'
-import nodemailer from 'nodemailer'
+require('dotenv/config')
+const nodemailer = require('nodemailer')
 
 // Create a Nodemailer transporter
 const transporter = nodemailer.createTransport({
@@ -31,7 +31,7 @@ const transporter = nodemailer.createTransport({
  *     console.error('Error sending OTP email:', err);
  *   });
  */
-export const sendOtpEmail = (email, otp) => {
+exports.sendOtpEmail = (email, otp) => {
     const mailOptions = {
         from: `"Agronomica 🌾🐄🚜" <${process.env.MAILER_USER}>`, // Replace with your email
         to: email,
@@ -57,7 +57,7 @@ export const sendOtpEmail = (email, otp) => {
  * @param {string} employeeEmail - The email of the employee to be onboarded
  * @returns {Promise} - A promise that resolves when the email is sent
  */
-export const sendOtpEmailToFarmer = (farmerEmail, otp, employeeEmail) => {
+exports.sendOtpEmailToFarmer = (farmerEmail, otp, employeeEmail) => {
     console.log('sendOtpEmailToFarmer params',farmerEmail, otp, employeeEmail);
     
     const mailOptions = {
@@ -98,7 +98,7 @@ export const sendOtpEmailToFarmer = (farmerEmail, otp, employeeEmail) => {
  *     console.error('Error sending employee credentials:', err);
  *   });
  */
-export const sendEmployeeCredentials = (email, employeeId, tempPassword) => {
+exports.sendEmployeeCredentials = (email, employeeId, tempPassword) => {
     const mailOptions = {
         from: `"Agronomica 🌾🐄🚜" <${process.env.MAILER_USER}>`,
         to: email,

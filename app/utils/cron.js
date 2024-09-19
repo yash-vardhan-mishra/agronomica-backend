@@ -1,10 +1,9 @@
 // cron.js
-import cron from 'node-cron';
-import connection from './db.js';
+const cron = require('node-cron')
+const connection = require('../models/db.js');
 
 // Schedule a job to run every minute
 cron.schedule('* * * * *', () => {
-    console.log('Running a task every minute to remove expired OTPs');
 
     const now = new Date();
     const removeExpiredOtpsSqlEmployees = 'UPDATE Employees SET otp = NULL, otpExpiration = NULL WHERE otpExpiration < ?';
