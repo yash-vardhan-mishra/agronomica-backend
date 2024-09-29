@@ -364,6 +364,13 @@ module.exports = app => {
     *   post:
     *     summary: Update farmer information
     *     tags: [Farmer]
+    *     parameters:
+    *       - in: header
+    *         name: farmerId
+    *         schema:
+    *           type: integer
+    *         required: true
+    *         description: ID of the farmer (sent in the headers)
     *     requestBody:
     *       required: true
     *       content:
@@ -371,9 +378,6 @@ module.exports = app => {
     *           schema:
     *             type: object
     *             properties:
-    *               farmerId:
-    *                 type: integer
-    *                 example: 1
     *               firstName:
     *                 type: string
     *                 example: "John"
@@ -384,7 +388,6 @@ module.exports = app => {
     *                 type: string
     *                 example: "1234567890"
     *             required:
-    *               - farmerId
     *               - firstName
     *               - lastName
     *               - contactNumber
@@ -433,64 +436,57 @@ module.exports = app => {
    app.post('/farmer/update-info', authenticateFarmerToken, farmers.updateInfo);
 
    /**
-* @swagger
-* /farmer/get-info:
-*   get:
-*     summary: Get farmer information
-*     tags: [Farmer]
-*     security:
-*       - bearerAuth: []
-*     parameters:
-*       - in: query
-*         name: farmerId
-*         required: true
-*         schema:
-*           type: integer
-*         description: The farmer ID of the farmer
-*     responses:
-*       200:
-*         description: Farmer information retrieved successfully
-*         content:
-*           application/json:
-*             schema:
-*               type: object
-*               properties:
-*                 firstName:
-*                   type: string
-*                   example: "John"
-*                 lastName:
-*                   type: string
-*                   example: "Doe"
-*                 contactNumber:
-*                   type: string
-*                   example: "+64212345678"
-*       404:
-*         description: Farmer not found
-*         content:
-*           application/json:
-*             schema:
-*               type: object
-*               properties:
-*                 error:
-*                   type: string
-*                   example: "Farmer not found"
-*       500:
-*         description: Internal server error
-*         content:
-*           application/json:
-*             schema:
-*               type: object
-*               properties:
-*                 error:
-*                   type: string
-*                   example: "Database error"
-* components:
-*   securitySchemes:
-*     bearerAuth:
-*       type: http
-*       scheme: bearer
-*       bearerFormat: JWT
-*/
+   * @swagger
+   * /farmer/get-info:
+   *   get:
+   *     summary: Get farmer information
+   *     tags: [Farmer]
+   *     security:
+   *       - bearerAuth: []
+   *     responses:
+   *       200:
+   *         description: Farmer information retrieved successfully
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 firstName:
+   *                   type: string
+   *                   example: "John"
+   *                 lastName:
+   *                   type: string
+   *                   example: "Doe"
+   *                 contactNumber:
+   *                   type: string
+   *                   example: "+64212345678"
+   *       404:
+   *         description: Farmer not found
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 error:
+   *                   type: string
+   *                   example: "Farmer not found"
+   *       500:
+   *         description: Internal server error
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 error:
+   *                   type: string
+   *                   example: "Database error"
+   * components:
+   *   securitySchemes:
+   *     bearerAuth:
+   *       type: http
+   *       scheme: bearer
+   *       bearerFormat: JWT
+   */
    app.get('/farmer/get-info', authenticateFarmerToken, farmers.getInfo);
 
    /**

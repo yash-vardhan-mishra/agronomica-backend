@@ -10,7 +10,7 @@ const { generateOTP, passwordRegex } = utils
 const { sendOtpEmail } = mailer
 
 const jwtSecret = process.env.EMPLOYEE_JWT_SECRET
-const jwtConfig = { expiresIn: '7h' };
+const jwtConfig = { expiresIn: '7d' };
 
 exports.login = (req, res) => {
     const { employeeId, password } = req.body;

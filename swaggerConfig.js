@@ -24,12 +24,12 @@ const options = {
                 ApiKeyAuth: [],
             },
         ],
-        servers: [
-            {
-                url: `http://localhost:${process.env.PORT}`,
-                description: 'Local server'
-            }
-        ],
+        // servers: [
+        //     {
+        //         url: `http://localhost:${process.env.PORT}`,
+        //         description: 'Local server'
+        //     }
+        // ],
         basePath: '/'
     },
     apis: ['./app/routes/employees.routes.js', './app/routes/farmers.routes.js'], // Paths to the API docs

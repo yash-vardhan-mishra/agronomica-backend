@@ -10,7 +10,7 @@ const uuid = require('uuid')
 const { emailRegex, generateOTP, generateTempPassword, getOtpExpirationTime, passwordRegex } = utils;
 const { sendEmployeeCredentials, sendOtpEmail, sendOtpEmailToFarmer } = mailer
 const jwtSecret = process.env.FARMER_JWT_SECRET
-const jwtConfig = { expiresIn: '7h' };
+const jwtConfig = { expiresIn: '7d' };
 
 exports.register = async (req, res) => {
     const { password, email } = req.body;
@@ -287,61 +287,91 @@ exports.login = (req, res) => {
 }
 
 exports.updateInfo = (req, res) => {
-    const { farmerId, firstName, lastName, contactNumber } = req.body;
+    // Get the authorization header and extract the token
+    const authHeader = req.headers['authorization'];
+    const authToken = authHeader && authHeader.split(' ')[1];
 
-    // Validate input
-    if (!farmerId || !firstName || !lastName || !contactNumber) {
-        return res.status(400).json({ success: false, error: 'All fields are required' });
+    // Validate that the authToken exists
+    if (!authToken) {
+        return res.status(400).json({ success: false, error: 'authToken is required' });
     }
 
-    // Validate contact number format (NZ and Australia)
-    const contactNumberRegex = /^(\+?64|0)[2-9]\d{7,9}$|^(\+?61|0)[2-9]\d{8,9}$/;
-    if (!contactNumberRegex.test(contactNumber)) {
-        return res.status(400).json({ success: false, error: 'Invalid contact number format' });
-    }
-
-    // Check if the contact number already exists
-    const checkContactNumberSql = 'SELECT * FROM FarmerInfo WHERE contactNumber = ? AND farmerId != ?';
-    connection.query(checkContactNumberSql, [contactNumber, farmerId], (err, results) => {
+    // Query to get farmerId from the authToken
+    const getFarmerIdSql = 'SELECT farmerId FROM FarmerInfo WHERE authToken = ?';
+    connection.query(getFarmerIdSql, [authToken], (err, results) => {
         if (err) {
-            console.error('Error checking contact number in database:', err);
+            console.error('Error fetching farmerId from database:', err);
             return res.status(500).json({ success: false, error: 'Database error' });
         }
 
-        if (results.length > 0) {
-            return res.status(409).json({ success: false, error: 'Contact number already exists' });
+        if (results.length === 0) {
+            return res.status(404).json({ success: false, error: 'Invalid authToken or farmer not found' });
         }
 
-        // Update farmer information
-        const updateFarmerInfoSql = `
-            UPDATE FarmerInfo
-            SET firstName = ?, lastName = ?, contactNumber = ?
-            WHERE farmerId = ?
-        `;
-        connection.query(updateFarmerInfoSql, [firstName, lastName, contactNumber, farmerId], (err, results) => {
+        // Get the farmerId from the results
+        const farmerId = results[0].farmerId;
+
+        // Get the other details from the request body
+        const { firstName, lastName, contactNumber } = req.body;
+
+        // Validate input
+        if (!firstName || !lastName || !contactNumber) {
+            return res.status(400).json({ success: false, error: 'All fields are required' });
+        }
+
+        // Validate contact number format (NZ and Australia)
+        const contactNumberRegex = /^(\+?64|0)[2-9]\d{7,9}$|^(\+?61|0)[2-9]\d{8,9}$/;
+        if (!contactNumberRegex.test(contactNumber)) {
+            return res.status(400).json({ success: false, error: 'Invalid contact number format' });
+        }
+
+        // Check if the contact number already exists
+        const checkContactNumberSql = 'SELECT * FROM FarmerInfo WHERE contactNumber = ? AND farmerId != ?';
+        connection.query(checkContactNumberSql, [contactNumber, farmerId], (err, results) => {
             if (err) {
-                console.error('Error updating farmer information:', err);
+                console.error('Error checking contact number in database:', err);
                 return res.status(500).json({ success: false, error: 'Database error' });
             }
 
-            if (results.affectedRows === 0) {
-                return res.status(404).json({ success: false, error: 'Farmer not found' });
+            if (results.length > 0) {
+                return res.status(409).json({ success: false, error: 'Contact number already exists' });
             }
 
-            res.status(200).json({ success: true, message: 'Farmer information updated successfully' });
+            // Update farmer information
+            const updateFarmerInfoSql = `
+                UPDATE FarmerInfo
+                SET firstName = ?, lastName = ?, contactNumber = ?
+                WHERE farmerId = ?
+            `;
+            connection.query(updateFarmerInfoSql, [firstName, lastName, contactNumber, farmerId], (err, results) => {
+                if (err) {
+                    console.error('Error updating farmer information:', err);
+                    return res.status(500).json({ success: false, error: 'Database error' });
+                }
+
+                if (results.affectedRows === 0) {
+                    return res.status(404).json({ success: false, error: 'Farmer not found' });
+                }
+
+                res.status(200).json({ success: true, message: 'Farmer information updated successfully' });
+            });
         });
     });
-}
+};
+
 
 exports.getInfo = (req, res) => {
-    const { farmerId } = req.query;
+    const authHeader = req.headers['authorization'];
+    const authToken = authHeader && authHeader.split(' ')[1];
 
-    if (!farmerId) {
-        return res.status(400).json({ success: false, error: 'farmerId is required' });
+    if (!authToken) {
+        return res.status(400).json({ success: false, error: 'authToken is required' });
     }
 
-    const getFarmerInfoSql = 'SELECT firstName, lastName, contactNumber FROM FarmerInfo WHERE farmerId = ?';
-    connection.query(getFarmerInfoSql, [farmerId], (err, results) => {
+    // Query to get farmerId from the authToken
+    const getFarmerIdSql = 'SELECT farmerId FROM FarmerInfo WHERE authToken = ?';
+
+    connection.query(getFarmerIdSql, [authToken], (err, results) => {
         if (err) {
             console.error('Error querying the database:', err);
             return res.status(500).json({ success: false, error: 'Database error' });
@@ -351,10 +381,25 @@ exports.getInfo = (req, res) => {
             return res.status(404).json({ success: false, error: 'Farmer not found' });
         }
 
-        const farmerInfo = results[0];
-        res.status(200).json(farmerInfo);
+        const { farmerId } = results[0];
+
+        // Query to get farmer information based on the retrieved farmerId
+        const getFarmerInfoSql = 'SELECT firstName, lastName, contactNumber FROM FarmerInfo WHERE farmerId = ?';
+        connection.query(getFarmerInfoSql, [farmerId], (err, results) => {
+            if (err) {
+                console.error('Error querying the database:', err);
+                return res.status(500).json({ success: false, error: 'Database error' });
+            }
+
+            if (results.length === 0) {
+                return res.status(404).json({ success: false, error: 'Farmer not found' });
+            }
+
+            const farmerInfo = results[0];
+            res.status(200).json({ ...farmerInfo, success: true });
+        });
     });
-}
+};
 
 exports.addField = (req, res) => {
     const { farmerId, fieldName, fieldAddress, size, cropType } = req.body;
