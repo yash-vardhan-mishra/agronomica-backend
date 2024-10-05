@@ -359,7 +359,6 @@ exports.updateInfo = (req, res) => {
     });
 };
 
-
 exports.getInfo = (req, res) => {
     const authHeader = req.headers['authorization'];
     const authToken = authHeader && authHeader.split(' ')[1];
@@ -442,8 +441,8 @@ exports.addField = (req, res) => {
             return res.status(400).json({ success: false, error: 'Invalid size value' });
         }
 
-        // Validate latitude and longitude with more precise regex (up to 14 decimal places)
-        const latLongRegex = /^-?\d{1,3}\.\d{1,14}$/;  // Allows up to 14 decimal places
+        // Validate latitude and longitude with more precise regex (up to 20 decimal places)
+        const latLongRegex = /^-?\d{1,3}\.\d{1,20}$/;  // Allows up to 20 decimal places
         if (!latLongRegex.test(fieldLat) || !latLongRegex.test(fieldLong)) {
             return res.status(400).json({ success: false, error: 'Invalid latitude or longitude format' });
         }
@@ -720,7 +719,6 @@ exports.getFields = (req, res) => {
     });
 };
 
-
 exports.getEmployees = (req, res) => {
     // Get the authorization header and extract the token
     const authHeader = req.headers['authorization'];
@@ -844,6 +842,87 @@ exports.getEmployeeById = (req, res) => {
             res.status(200).json({
                 success: true,
                 data: results[0]
+            });
+        });
+    });
+};
+
+exports.updateEmployee = (req, res) => {
+    const { employeeId, fieldId, employeeRole } = req.body;
+
+    // Get the authorization header and extract the token
+    const authHeader = req.headers['authorization'];
+    const authToken = authHeader && authHeader.split(' ')[1];
+
+    // Validate that the authToken exists
+    if (!authToken) {
+        return res.status(400).json({ success: false, error: 'authToken is required' });
+    }
+
+    // Query to get farmerId from the authToken
+    const getFarmerIdSql = 'SELECT farmerId FROM FarmerInfo WHERE authToken = ?';
+    connection.query(getFarmerIdSql, [authToken], (err, results) => {
+        if (err) {
+            console.error('Error fetching farmerId from database:', err);
+            return res.status(500).json({ success: false, error: 'Database error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ success: false, error: 'Invalid authToken or farmer not found' });
+        }
+
+        const farmerId = results[0].farmerId;
+
+        // Validate input
+        if (!employeeId || (!fieldId && employeeRole === undefined)) {
+            return res.status(400).json({ success: false, error: 'Invalid input: employeeId is required and at least one of fieldId or employeeRole must be provided.' });
+        }
+
+        if (employeeRole && !['supervisor', 'worker'].includes(employeeRole)) {
+            return res.status(400).json({ success: false, error: 'Invalid employee role' });
+        }
+
+        // Check if the employee belongs to the farmer
+        const checkEmployeeSql = 'SELECT * FROM Employees WHERE employeeId = ? AND farmerId = ?';
+        connection.query(checkEmployeeSql, [employeeId, farmerId], (err, results) => {
+            if (err) {
+                console.error('Error querying the database:', err);
+                return res.status(500).json({ success: false, error: 'Database error' });
+            }
+
+            if (results.length === 0) {
+                return res.status(404).json({ success: false, error: 'Employee not found or does not belong to this farmer' });
+            }
+
+            // Prepare the update query
+            let updateFields = [];
+            let updateValues = [];
+
+            if (fieldId) {
+                updateFields.push('fieldId = ?');
+                updateValues.push(fieldId);
+            }
+
+            if (employeeRole) {
+                updateFields.push('employeeRole = ?');
+                updateValues.push(employeeRole);
+            }
+
+            // Update the employee
+            const updateEmployeeSql = `
+                UPDATE Employees
+                SET ${updateFields.join(', ')}
+                WHERE employeeId = ?
+            `;
+            updateValues.push(employeeId);
+
+            connection.query(updateEmployeeSql, updateValues, (err, result) => {
+                if (err) {
+                    console.error('Error updating employee in database:', err);
+                    return res.status(500).json({ success: false, error: 'Database error' });
+                }
+
+                res.status(200).json({ success: true, message: 'Employee updated successfully' });
             });
         });
     });

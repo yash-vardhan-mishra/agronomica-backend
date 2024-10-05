@@ -1017,5 +1017,83 @@ module.exports = app => {
     *                   example: "Database error"
     */
    app.get('/farmer/get-employee/:employeeId', authenticateFarmerToken, farmers.getEmployeeById);
+
+   /**
+    * @swagger
+    * /farmer/update-employee:
+    *   post:
+    *     summary: Update employee information
+    *     tags: [Employee]
+    *     parameters:
+    *       - in: header
+    *         name: authToken
+    *         schema:
+    *           type: string
+    *         required: true
+    *         description: Auth token of the farmer (sent in the headers)
+    *     requestBody:
+    *       required: true
+    *       content:
+    *         application/json:
+    *           schema:
+    *             type: object
+    *             properties:
+    *               employeeId:
+    *                 type: string
+    *                 example: "b6a38c4f-48b4-42f8-a69a-b58f99f4d8a4"
+    *               fieldId:
+    *                 type: string
+    *                 example: "e5b8d1c8-8b3f-4a2e-a8f2-ece7f5ae71f0"
+    *               employeeRole:
+    *                 type: string
+    *                 enum: [supervisor, worker]
+    *                 example: "worker"
+    *             required:
+    *               - employeeId
+    *               - fieldId
+    *               - employeeRole
+    *     responses:
+    *       200:
+    *         description: Employee information updated successfully
+    *         content:
+    *           application/json:
+    *             schema:
+    *               type: object
+    *               properties:
+    *                 message:
+    *                   type: string
+    *                   example: "Employee information updated successfully"
+    *       400:
+    *         description: Invalid input
+    *         content:
+    *           application/json:
+    *             schema:
+    *               type: object
+    *               properties:
+    *                 error:
+    *                   type: string
+    *                   example: "Invalid input"
+    *       404:
+    *         description: Employee not found
+    *         content:
+    *           application/json:
+    *             schema:
+    *               type: object
+    *               properties:
+    *                 error:
+    *                   type: string
+    *                   example: "Employee not found"
+    *       500:
+    *         description: Internal server error
+    *         content:
+    *           application/json:
+    *             schema:
+    *               type: object
+    *               properties:
+    *                 error:
+    *                   type: string
+    *                   example: "Database error"
+    */
+   app.post('/farmer/update-employee', authenticateFarmerToken, farmers.updateEmployee);
 }
 
