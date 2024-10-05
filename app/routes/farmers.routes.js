@@ -130,7 +130,6 @@ module.exports = app => {
     */
    app.post('/farmer/register', farmers.register);
 
-
    /**
     * @swagger
     * /farmer/reset-password:
@@ -357,7 +356,6 @@ module.exports = app => {
     */
    app.post('/farmer/login', farmers.login);
 
-
    /**
     * @swagger
     * /farmer/update-info:
@@ -504,22 +502,33 @@ module.exports = app => {
     *           schema:
     *             type: object
     *             properties:
-    *               farmerId:
-    *                 type: integer
-    *                 example: 1
     *               fieldName:
     *                 type: string
     *                 example: "North Field"
+    *                 description: "Name of the field"
     *               fieldAddress:
     *                 type: string
     *                 example: "123 Farm Lane, Ruralville"
+    *                 description: "Address of the field"
     *               size:
     *                 type: number
     *                 format: float
     *                 example: 15.5
-    *               cropType:
-    *                 type: string
-    *                 example: "Corn"
+    *                 description: "Size of the field in acres"
+    *               fieldTypeId:
+    *                 type: integer
+    *                 example: 1
+    *                 description: "Type of the field (e.g., Pasture, Orchard, Farm). Select from predefined types."
+    *               fieldLat:
+    *                 type: number
+    *                 format: float
+    *                 example: -37.123456
+    *                 description: "Latitude of the field location"
+    *               fieldLong:
+    *                 type: number
+    *                 format: float
+    *                 example: 174.123456
+    *                 description: "Longitude of the field location"
     *     responses:
     *       201:
     *         description: Field added successfully
@@ -528,6 +537,9 @@ module.exports = app => {
     *             schema:
     *               type: object
     *               properties:
+    *                 success:
+    *                   type: boolean
+    *                   example: true
     *                 message:
     *                   type: string
     *                   example: "Field added successfully"
@@ -538,6 +550,9 @@ module.exports = app => {
     *             schema:
     *               type: object
     *               properties:
+    *                 success:
+    *                   type: boolean
+    *                   example: false
     *                 error:
     *                   type: string
     *                   example: "Invalid input or field name already exists"
@@ -548,6 +563,9 @@ module.exports = app => {
     *             schema:
     *               type: object
     *               properties:
+    *                 success:
+    *                   type: boolean
+    *                   example: false
     *                 error:
     *                   type: string
     *                   example: "Database error"
@@ -580,6 +598,15 @@ module.exports = app => {
     *                 type: string
     *                 enum: [supervisor, worker]
     *                 example: "worker"
+    *               firstName:
+    *                 type: string
+    *                 example: "John"
+    *               lastName:
+    *                 type: string
+    *                 example: "Doe"
+    *               contactNumber:
+    *                 type: string
+    *                 example: "+1234567890"
     *     responses:
     *       200:
     *         description: OTP sent to farmer's email for confirmation
@@ -615,59 +642,207 @@ module.exports = app => {
    app.post('/farmer/onboard-employee', authenticateFarmerToken, farmers.onboardEmployee);
 
    /**
+ * @swagger
+ * /farmer/onboard-employee-verify-otp:
+ *   post:
+ *     summary: Verify OTP and onboard the employee
+ *     tags: [Farmer]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               otp:
+ *                 type: string
+ *                 example: "123456"
+ *               employeeEmail:
+ *                 type: string
+ *                 example: "newemployee@example.com"
+ *               employeeRole:
+ *                 type: string
+ *                 enum: [supervisor, worker]
+ *                 example: "worker"
+ *               firstName:
+ *                 type: string
+ *                 example: "John"
+ *               lastName:
+ *                 type: string
+ *                 example: "Doe"
+ *               contactNumber:
+ *                 type: string
+ *                 example: "1234567890"
+ *     responses:
+ *       200:
+ *         description: Employee onboarded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Employee onboarded successfully"
+ *       400:
+ *         description: Invalid OTP or input
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Invalid OTP or input"
+ *       404:
+ *         description: OTP not found or expired
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "OTP not found or expired"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Database error"
+ */
+   app.post('/farmer/onboard-employee-verify-otp', authenticateFarmerToken, farmers.onboardEmployeeVerifyOtp);
+
+   /**
+ * @swagger
+ * /farmer/get-field-types:
+ *   get:
+ *     summary: Get all available field types
+ *     tags: [Farmer]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: List of field types
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   typeId:
+ *                     type: integer
+ *                     example: 1
+ *                     description: "The unique ID of the field type"
+ *                   fieldType:
+ *                     type: string
+ *                     example: "Pasture"
+ *                     description: "The name of the field type"
+ *       401:
+ *         description: Unauthorized access
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: string
+ *                   example: "Unauthorized"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 error:
+ *                   type: string
+ *                   example: "Database error"
+ * components:
+ *   securitySchemes:
+ *     bearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ */
+   app.get('/farmer/get-field-types', authenticateFarmerToken, farmers.getFieldTypes);
+
+   /**
     * @swagger
-    * /farmer/onboard-employee-verify-otp:
-    *   post:
-    *     summary: Verify OTP and onboard the employee
+    * /farmer/fields:
+    *   get:
+    *     summary: Retrieve all fields associated with the authenticated farmer
     *     tags: [Farmer]
-    *     requestBody:
-    *       required: true
-    *       content:
-    *         application/json:
-    *           schema:
-    *             type: object
-    *             properties:
-    *               otp:
-    *                 type: string
-    *                 example: "123456"
-    *               employeeEmail:
-    *                 type: string
-    *                 example: "newemployee@example.com"
-    *               employeeRole:
-    *                 type: string
-    *                 enum: [supervisor, worker]
-    *                 example: "worker"
+    *     security:
+    *       - bearerAuth: []
     *     responses:
     *       200:
-    *         description: Employee onboarded successfully
+    *         description: List of fields fetched successfully
     *         content:
     *           application/json:
     *             schema:
     *               type: object
     *               properties:
-    *                 message:
-    *                   type: string
-    *                   example: "Employee onboarded successfully"
-    *       400:
-    *         description: Invalid OTP or input
+    *                 success:
+    *                   type: boolean
+    *                   example: true
+    *                 data:
+    *                   type: array
+    *                   items:
+    *                     type: object
+    *                     properties:
+    *                       fieldId:
+    *                         type: string
+    *                         example: "123e4567-e89b-12d3-a456-426614174000"
+    *                         description: "Unique ID of the field"
+    *                       fieldName:
+    *                         type: string
+    *                         example: "North Field"
+    *                         description: "Name of the field"
+    *                       fieldAddress:
+    *                         type: string
+    *                         example: "123 Farm Lane, Ruralville"
+    *                         description: "Address of the field"
+    *                       size:
+    *                         type: number
+    *                         example: 15.5
+    *                         description: "Size of the field in acres"
+    *                       fieldType:
+    *                         type: string
+    *                         example: "Orchard"
+    *                         description: "Type of the field"
+    *                       fieldLat:
+    *                         type: number
+    *                         example: -37.123456
+    *                         description: "Latitude of the field location"
+    *                       fieldLong:
+    *                         type: number
+    *                         example: 174.123456
+    *                         description: "Longitude of the field location"
+    *       401:
+    *         description: Unauthorized. Missing or invalid token.
     *         content:
     *           application/json:
     *             schema:
     *               type: object
     *               properties:
+    *                 success:
+    *                   type: boolean
+    *                   example: false
     *                 error:
     *                   type: string
-    *                   example: "Invalid OTP or input"
-    *       404:
-    *         description: OTP not found or expired
-    *         content:
-    *           application/json:
-    *             schema:
-    *               type: object
-    *               properties:
-    *                 error:
-    *                   type: string
-    *                   example: "OTP not found or expired"
+    *                   example: "Unauthorized access. No token provided."
     *       500:
     *         description: Internal server error
     *         content:
@@ -675,9 +850,172 @@ module.exports = app => {
     *             schema:
     *               type: object
     *               properties:
+    *                 success:
+    *                   type: boolean
+    *                   example: false
+    *                 error:
+    *                   type: string
+    *                   example: "Database error"
+    * components:
+    *   securitySchemes:
+    *     bearerAuth:
+    *       type: http
+    *       scheme: bearer
+    *       bearerFormat: JWT
+    */
+   app.get('/farmer/get-fields', authenticateFarmerToken, farmers.getFields);
+
+   /**
+    * @swagger
+    * /farmer/get-employees:
+    *   get:
+    *     summary: Get all employees for a specific farmer, including field type
+    *     tags: [Farmer]
+    *     security:
+    *       - bearerAuth: []
+    *     responses:
+    *       200:
+    *         description: Employees fetched successfully
+    *         content:
+    *           application/json:
+    *             schema:
+    *               type: object
+    *               properties:
+    *                 success:
+    *                   type: boolean
+    *                   example: true
+    *                 data:
+    *                   type: array
+    *                   items:
+    *                     type: object
+    *                     properties:
+    *                       employeeId:
+    *                         type: string
+    *                         example: "123e4567-e89b-12d3-a456-426614174000"
+    *                       fieldId:
+    *                         type: string
+    *                         example: "456e7890-e89b-12d3-a456-426614174111"
+    *                       fieldType:
+    *                         type: string
+    *                         example: "orchard"
+    *                       employeeRole:
+    *                         type: string
+    *                         example: "supervisor"
+    *                       email:
+    *                         type: string
+    *                         example: "employee@example.com"
+    *                       firstName:
+    *                         type: string
+    *                         example: "John"
+    *                       lastName:
+    *                         type: string
+    *                         example: "Doe"
+    *                       contactNumber:
+    *                         type: string
+    *                         example: "+1234567890"
+    *                       createdAt:
+    *                         type: string
+    *                         format: date-time
+    *                         example: "2024-10-05T14:48:00.000Z"
+    *                       isPasswordChanged:
+    *                         type: boolean
+    *                         example: false
+    *       500:
+    *         description: Internal server error
+    *         content:
+    *           application/json:
+    *             schema:
+    *               type: object
+    *               properties:
+    *                 success:
+    *                   type: boolean
+    *                   example: false
+    *                 error:
+    *                   type: string
+    *                   example: "Database error"
+    * components:
+    *   securitySchemes:
+    *     bearerAuth:
+    *       type: http
+    *       scheme: bearer
+    *       bearerFormat: JWT
+    */
+   app.get('/farmer/get-employees', authenticateFarmerToken, farmers.getEmployees);
+
+   /**
+    * @swagger
+    * /farmer/get-employee/{employeeId}:
+    *   get:
+    *     summary: Get details of a specific employee by employeeId, including field type
+    *     tags: [Farmer]
+    *     security:
+    *       - bearerAuth: []
+    *     parameters:
+    *       - in: path
+    *         name: employeeId
+    *         schema:
+    *           type: string
+    *         required: true
+    *         description: The unique employeeId of the employee
+    *     responses:
+    *       200:
+    *         description: Employee details fetched successfully
+    *         content:
+    *           application/json:
+    *             schema:
+    *               type: object
+    *               properties:
+    *                 success:
+    *                   type: boolean
+    *                   example: true
+    *                 data:
+    *                   type: object
+    *                   properties:
+    *                     employeeId:
+    *                       type: string
+    *                       example: "123e4567-e89b-12d3-a456-426614174000"
+    *                     fieldId:
+    *                       type: string
+    *                       example: "456e7890-e89b-12d3-a456-426614174111"
+    *                     fieldType:
+    *                       type: string
+    *                       example: "orchard"
+    *                     employeeRole:
+    *                       type: string
+    *                       example: "supervisor"
+    *                     email:
+    *                       type: string
+    *                       example: "employee@example.com"
+    *                     firstName:
+    *                       type: string
+    *                       example: "John"
+    *                     lastName:
+    *                       type: string
+    *                       example: "Doe"
+    *                     contactNumber:
+    *                       type: string
+    *                       example: "+1234567890"
+    *                     createdAt:
+    *                       type: string
+    *                       format: date-time
+    *                       example: "2024-10-05T14:48:00.000Z"
+    *                     isPasswordChanged:
+    *                       type: boolean
+    *                       example: false
+    *       500:
+    *         description: Internal server error
+    *         content:
+    *           application/json:
+    *             schema:
+    *               type: object
+    *               properties:
+    *                 success:
+    *                   type: boolean
+    *                   example: false
     *                 error:
     *                   type: string
     *                   example: "Database error"
     */
-   app.post('/farmer/onboard-employee-verify-otp', authenticateFarmerToken, farmers.onboardEmployeeVerifyOtp);
+   app.get('/farmer/get-employee/:employeeId', authenticateFarmerToken, farmers.getEmployeeById);
 }
+

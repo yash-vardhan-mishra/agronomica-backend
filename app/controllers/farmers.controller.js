@@ -402,138 +402,450 @@ exports.getInfo = (req, res) => {
 };
 
 exports.addField = (req, res) => {
-    const { farmerId, fieldName, fieldAddress, size, cropType } = req.body;
+    // Get the authorization header and extract the token
+    const authHeader = req.headers['authorization'];
+    const authToken = authHeader && authHeader.split(' ')[1];
 
-    // Validate input
-    if (!farmerId || !fieldName || !fieldAddress || !size) {
-        return res.status(400).json({ error: 'Invalid input' });
+    // Validate that the authToken exists
+    if (!authToken) {
+        return res.status(400).json({ success: false, error: 'authToken is required' });
     }
 
-    // Check if field name already exists for the farmer
-    const checkFieldNameSql = 'SELECT * FROM Fields WHERE farmerId = ? AND fieldName = ?';
-    connection.query(checkFieldNameSql, [farmerId, fieldName], (err, results) => {
+    // Query to get farmerId from the authToken
+    const getFarmerIdSql = 'SELECT farmerId FROM FarmerInfo WHERE authToken = ?';
+    connection.query(getFarmerIdSql, [authToken], (err, results) => {
         if (err) {
-            console.error('Error querying the database:', err);
-            return res.status(500).json({ success: false, error: 'Database error' });
-        }
-
-        if (results.length > 0) {
-            return res.status(400).json({ success: false, error: 'Field name already exists for this farmer' });
-        }
-
-        // Generate fieldId
-        const fieldId = uuid.v4();
-
-        // Insert new field if name is unique for the farmer
-        const addFieldSql = 'INSERT INTO Fields (fieldId, farmerId, fieldName, fieldAddress, size, cropType) VALUES (?, ?, ?, ?, ?, ?)';
-        const fieldValues = [fieldId, farmerId, fieldName, fieldAddress, size, cropType || null];
-
-        connection.query(addFieldSql, fieldValues, (err, results) => {
-            if (err) {
-                console.error('Error inserting into the database:', err);
-                return res.status(500).json({ success: false, error: 'Database error' });
-            }
-
-            res.status(201).json({ success: true, message: 'Field added successfully' });
-        });
-    });
-}
-
-exports.onboardEmployee = (req, res) => {
-    const { employeeEmail, employeeRole } = req.body;
-    const farmerId = req.user.farmerId;
-
-    // Validate email format
-    if (!emailRegex.test(employeeEmail)) {
-        return res.status(400).json({ success: false, error: 'Invalid email format' });
-    }
-
-    if (!employeeEmail || !employeeRole || !['supervisor', 'worker'].includes(employeeRole)) {
-        return res.status(400).json({ success: false, error: 'Invalid input' });
-    }
-
-    // Generate OTP and its hash
-    const otp = generateOTP();
-    const otpHash = bcrypt.hashSync(otp, 10);
-    const otpExpiration = getOtpExpirationTime();
-
-    // Retrieve the farmer's email using the farmerId
-    const getFarmerEmailSql = 'SELECT email FROM Farmers WHERE farmerId = ?';
-    connection.query(getFarmerEmailSql, [farmerId], async (err, results) => {
-        if (err) {
-            console.error('Error retrieving farmer email:', err);
+            console.error('Error fetching farmerId from database:', err);
             return res.status(500).json({ success: false, error: 'Database error' });
         }
 
         if (results.length === 0) {
-            return res.status(404).json({ success: false, error: 'Farmer not found' });
+            return res.status(404).json({ success: false, error: 'Invalid authToken or farmer not found' });
         }
 
-        const farmerEmail = results[0].email;
+        // Get the farmerId from the results
+        const farmerId = results[0].farmerId;
 
-        // Store OTP and expiration time for the farmer
-        const updateFarmerOtpSql = 'UPDATE Farmers SET otp = ?, otpExpiration = ? WHERE farmerId = ?';
-        connection.query(updateFarmerOtpSql, [otpHash, otpExpiration, farmerId], async (err) => {
+        // Get the field details from the request body
+        const { fieldName, fieldAddress, size, fieldType, fieldLat, fieldLong } = req.body;
+
+        // Validate input
+        if (!fieldName || !fieldAddress || !size || !fieldType || !fieldLat || !fieldLong) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid input. All fields (fieldName, fieldAddress, size, fieldType, fieldLat, and fieldLong) are required.'
+            });
+        }
+
+        // Validate field size
+        if (isNaN(size) || size <= 0) {
+            return res.status(400).json({ success: false, error: 'Invalid size value' });
+        }
+
+        // Validate latitude and longitude with more precise regex (up to 14 decimal places)
+        const latLongRegex = /^-?\d{1,3}\.\d{1,14}$/;  // Allows up to 14 decimal places
+        if (!latLongRegex.test(fieldLat) || !latLongRegex.test(fieldLong)) {
+            return res.status(400).json({ success: false, error: 'Invalid latitude or longitude format' });
+        }
+
+        // Check if field name already exists for the farmer
+        const checkFieldNameSql = 'SELECT * FROM Fields WHERE farmerId = ? AND fieldName = ?';
+        connection.query(checkFieldNameSql, [farmerId, fieldName], (err, results) => {
             if (err) {
-                console.error('Error updating OTP in database:', err);
+                console.error('Error querying the database:', err);
                 return res.status(500).json({ success: false, error: 'Database error' });
             }
 
-            // Send OTP email to the farmer
-            try {
-                await sendOtpEmailToFarmer(farmerEmail, otp, employeeEmail);
-                res.status(200).json({ success: true, message: 'OTP sent to farmer\'s email for confirmation' });
-            } catch (err) {
-                console.error('Error sending OTP email:', err);
-                res.status(500).json({ success: false, error: 'Error sending OTP email' });
+            if (results.length > 0) {
+                return res.status(400).json({ success: false, error: 'Field name already exists for this farmer' });
             }
+
+            // Generate a UUID for fieldId
+            const fieldId = uuid.v4();
+
+            // Insert new field if name is unique for the farmer
+            const addFieldSql = `
+                INSERT INTO Fields (fieldId, farmerId, fieldName, fieldAddress, size, fieldType, fieldLat, fieldLong)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+            const fieldValues = [
+                fieldId,
+                farmerId,
+                fieldName,
+                fieldAddress,
+                size,
+                fieldType,
+                fieldLat,
+                fieldLong
+            ];
+
+            connection.query(addFieldSql, fieldValues, (err, results) => {
+                if (err) {
+                    console.error('Error inserting into the database:', err);
+                    return res.status(500).json({ success: false, error: 'Database error' });
+                }
+
+                res.status(201).json({ success: true, message: 'Field added successfully' });
+            });
         });
     });
-}
+};
 
-exports.onboardEmployeeVerifyOtp = async (req, res) => {
-    const { otp, employeeEmail, employeeRole } = req.body;
-    const farmerId = req.user.farmerId;
+exports.onboardEmployee = (req, res) => {
+    // Get the authorization header and extract the token
+    const authHeader = req.headers['authorization'];
+    const authToken = authHeader && authHeader.split(' ')[1];
 
-    if (!otp || !employeeEmail || !employeeRole || !['supervisor', 'worker'].includes(employeeRole)) {
-        return res.status(400).json({ success: false, error: 'Invalid input' });
+    // Validate that the authToken exists
+    if (!authToken) {
+        return res.status(400).json({ success: false, error: 'authToken is required' });
     }
 
-    // Retrieve farmer's OTP and expiration
-    const getFarmerOtpSql = 'SELECT otp, otpExpiration FROM Farmers WHERE farmerId = ?';
-    connection.query(getFarmerOtpSql, [farmerId], async (err, results) => {
+    // Query to get farmerId from the authToken
+    const getFarmerIdSql = 'SELECT farmerId FROM FarmerInfo WHERE authToken = ?';
+    connection.query(getFarmerIdSql, [authToken], (err, results) => {
         if (err) {
-            console.error('Error querying the database:', err);
+            console.error('Error fetching farmerId from database:', err);
             return res.status(500).json({ success: false, error: 'Database error' });
         }
 
-        if (results.length === 0 || !bcrypt.compareSync(otp, results[0].otp) || new Date() > new Date(results[0].otpExpiration)) {
-            return res.status(404).json({ success: false, error: 'OTP not found or expired' });
+        if (results.length === 0) {
+            return res.status(404).json({ success: false, error: 'Invalid authToken or farmer not found' });
         }
 
-        // Generate temporary credentials for the employee
-        const employeePassword = generateTempPassword();
-        const hashedPassword = await bcrypt.hash(employeePassword, 10);
+        // Get the farmerId from the results
+        const farmerId = results[0].farmerId;
 
-        // Generate employeeId
-        const employeeId = uuid.v4();
+        const { employeeEmail, employeeRole, firstName, lastName, contactNumber, fieldId } = req.body;
 
-        // Insert new employee into the database
-        const insertEmployeeSql = 'INSERT INTO Employees (employeeId, farmerId, employeeRole, email, passwordHash) VALUES (?, ?, ?, ?, ?)';
-        connection.query(insertEmployeeSql, [employeeId, farmerId, employeeRole, employeeEmail, hashedPassword], async (err, result) => {
+        const contactNumberRegex = /^(\+?64|0)[2-9]\d{7,9}$|^(\+?61|0)[2-9]\d{8,9}$/;
+        if (!contactNumberRegex.test(contactNumber)) {
+            return res.status(400).json({ success: false, error: 'Invalid contact number format' });
+        }
+
+        // Validate email format
+        if (!emailRegex.test(employeeEmail)) {
+            return res.status(400).json({ success: false, error: 'Invalid email format' });
+        }
+
+        if (!employeeEmail || !employeeRole || !firstName || !lastName || !contactNumber || !fieldId ||
+            !['supervisor', 'worker'].includes(employeeRole)) {
+            return res.status(400).json({ success: false, error: 'Invalid input' });
+        }
+
+        // Generate OTP and its hash
+        const otp = generateOTP();
+        const otpHash = bcrypt.hashSync(otp, 10);
+        const otpExpiration = getOtpExpirationTime();
+
+        // Retrieve the farmer's email using the farmerId
+        const getFarmerEmailSql = 'SELECT email FROM Farmers WHERE farmerId = ?';
+        connection.query(getFarmerEmailSql, [farmerId], async (err, results) => {
             if (err) {
-                console.error('Error inserting employee into database:', err);
+                console.error('Error retrieving farmer email:', err);
                 return res.status(500).json({ success: false, error: 'Database error' });
             }
 
-            // Send credentials to the employee
-            try {
-                await sendEmployeeCredentials(employeeEmail, employeeId, employeePassword);
-                res.status(200).json({ success: true, message: 'Employee onboarded successfully' });
-            } catch (err) {
-                console.error('Error sending employee email:', err);
-                res.status(500).json({ success: false, error: 'Error sending employee email' });
+            if (results.length === 0) {
+                return res.status(404).json({ success: false, error: 'Farmer not found' });
             }
+
+            const farmerEmail = results[0].email;
+
+            // Store OTP and expiration time for the farmer
+            const updateFarmerOtpSql = 'UPDATE Farmers SET otp = ?, otpExpiration = ? WHERE farmerId = ?';
+            connection.query(updateFarmerOtpSql, [otpHash, otpExpiration, farmerId], async (err) => {
+                if (err) {
+                    console.error('Error updating OTP in database:', err);
+                    return res.status(500).json({ success: false, error: 'Database error' });
+                }
+
+                // Send OTP email to the farmer
+                try {
+                    await sendOtpEmailToFarmer(farmerEmail, otp, employeeEmail);
+                    res.status(200).json({ success: true, message: 'OTP sent to farmer\'s email for confirmation' });
+                } catch (err) {
+                    console.error('Error sending OTP email:', err);
+                    res.status(500).json({ success: false, error: 'Error sending OTP email' });
+                }
+            });
         });
     });
-}
+};
+
+exports.onboardEmployeeVerifyOtp = async (req, res) => {
+    const { otp, employeeEmail, employeeRole, firstName, lastName, contactNumber, fieldId } = req.body;
+
+    // Get the authorization header and extract the token
+    const authHeader = req.headers['authorization'];
+    const authToken = authHeader && authHeader.split(' ')[1];
+
+    // Validate that the authToken exists
+    if (!authToken) {
+        return res.status(400).json({ success: false, error: 'authToken is required' });
+    }
+
+    // Query to get farmerId from the authToken
+    const getFarmerIdSql = 'SELECT farmerId FROM FarmerInfo WHERE authToken = ?';
+    connection.query(getFarmerIdSql, [authToken], (err, results) => {
+        if (err) {
+            console.error('Error fetching farmerId from database:', err);
+            return res.status(500).json({ success: false, error: 'Database error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ success: false, error: 'Invalid authToken or farmer not found' });
+        }
+
+        const farmerId = results[0].farmerId;
+
+        // Validate input
+        if (!otp || !employeeEmail || !employeeRole || !['supervisor', 'worker'].includes(employeeRole) ||
+            !firstName || !lastName || !contactNumber || !fieldId) {
+            return res.status(400).json({ success: false, error: 'Invalid input' });
+        }
+
+        // Retrieve farmer's OTP and expiration
+        const getFarmerOtpSql = 'SELECT otp, otpExpiration FROM Farmers WHERE farmerId = ?';
+        connection.query(getFarmerOtpSql, [farmerId], async (err, results) => {
+            if (err) {
+                console.error('Error querying the database:', err);
+                return res.status(500).json({ success: false, error: 'Database error' });
+            }
+
+            if (results.length === 0 || !bcrypt.compareSync(otp, results[0].otp) || new Date() > new Date(results[0].otpExpiration)) {
+                return res.status(404).json({ success: false, error: 'OTP not found or expired' });
+            }
+
+            // Generate temporary credentials for the employee
+            const employeePassword = generateTempPassword();
+            const hashedPassword = await bcrypt.hash(employeePassword, 10);
+
+            // Generate employeeId
+            const employeeId = uuid.v4();
+
+            // Insert new employee into the database, including fieldId
+            const insertEmployeeSql = `
+                INSERT INTO Employees (employeeId, farmerId, fieldId, employeeRole, email, passwordHash, firstName, lastName, contactNumber) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+            connection.query(insertEmployeeSql, [employeeId, farmerId, fieldId, employeeRole, employeeEmail, hashedPassword, firstName, lastName, contactNumber], async (err, result) => {
+                if (err) {
+                    console.error('Error inserting employee into database:', err);
+                    return res.status(500).json({ success: false, error: 'Database error' });
+                }
+
+                // Send credentials to the employee
+                try {
+                    await sendEmployeeCredentials(employeeEmail, employeePassword);
+                    res.status(200).json({ success: true, message: 'Employee onboarded successfully' });
+                } catch (err) {
+                    console.error('Error sending employee email:', err);
+                    res.status(500).json({ success: false, error: 'Error sending employee email' });
+                }
+            });
+        });
+    });
+};
+
+exports.getFieldTypes = (req, res) => {
+    // Query to get all field types from the FieldTypes table
+    const getFieldTypesSql = 'SELECT typeId, fieldType FROM FieldTypes';
+
+    // Execute the query
+    connection.query(getFieldTypesSql, (err, results) => {
+        if (err) {
+            console.error('Error fetching field types from database:', err);
+            return res.status(500).json({ success: false, error: 'Database error' });
+        }
+
+        // Return the field types as JSON response
+        res.status(200).json({ success: true, fieldTypes: results });
+    });
+};
+
+exports.getFields = (req, res) => {
+    // Get the authorization header and extract the token
+    const authHeader = req.headers['authorization'];
+    const authToken = authHeader && authHeader.split(' ')[1];
+
+    // Validate that the authToken exists
+    if (!authToken) {
+        return res.status(400).json({ success: false, error: 'authToken is required' });
+    }
+
+    // Query to get farmerId from the authToken
+    const getFarmerIdSql = 'SELECT farmerId FROM FarmerInfo WHERE authToken = ?';
+    connection.query(getFarmerIdSql, [authToken], (err, results) => {
+        if (err) {
+            console.error('Error fetching farmerId from database:', err);
+            return res.status(500).json({ success: false, error: 'Database error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ success: false, error: 'Invalid authToken or farmer not found' });
+        }
+
+        const farmerId = results[0].farmerId;
+
+        // SQL query to get the fields associated with this farmer
+        const sqlQuery = `
+            SELECT 
+                f.fieldId, 
+                f.fieldName, 
+                f.fieldAddress, 
+                f.size, 
+                f.fieldType,  -- Changed from ft.fieldType to f.fieldType
+                f.fieldLat, 
+                f.fieldLong
+            FROM 
+                Fields f
+            WHERE 
+                f.farmerId = ?;
+        `;
+
+        // Execute the query
+        connection.query(sqlQuery, [farmerId], (err, results) => {
+            if (err) {
+                console.error('Error fetching fields:', err);
+                return res.status(500).json({ success: false, error: 'Database error' });
+            }
+
+            // Return the results
+            res.status(200).json({
+                success: true,
+                data: results
+            });
+        });
+    });
+};
+
+
+exports.getEmployees = (req, res) => {
+    // Get the authorization header and extract the token
+    const authHeader = req.headers['authorization'];
+    const authToken = authHeader && authHeader.split(' ')[1];
+
+    // Validate that the authToken exists
+    if (!authToken) {
+        return res.status(400).json({ success: false, error: 'authToken is required' });
+    }
+
+    // Query to get farmerId from the authToken
+    const getFarmerIdSql = 'SELECT farmerId FROM FarmerInfo WHERE authToken = ?';
+    connection.query(getFarmerIdSql, [authToken], (err, results) => {
+        if (err) {
+            console.error('Error fetching farmerId from database:', err);
+            return res.status(500).json({ success: false, error: 'Database error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ success: false, error: 'Invalid authToken or farmer not found' });
+        }
+
+        const farmerId = results[0].farmerId;
+
+        // SQL query to get the employees along with fieldType
+        const sqlQuery = `
+            SELECT 
+                e.employeeId,
+                e.fieldId,
+                f.fieldType,
+                e.employeeRole,
+                e.email,
+                e.firstName,
+                e.lastName,
+                e.contactNumber,
+                e.createdAt,
+                e.isPasswordChanged
+            FROM 
+                Employees e
+            JOIN
+                Fields f ON e.fieldId = f.fieldId  -- Join Fields table to get fieldType
+            WHERE 
+                e.farmerId = ?;
+        `;
+
+        // Execute the query
+        connection.query(sqlQuery, [farmerId], (err, results) => {
+            if (err) {
+                console.error('Error fetching employees:', err);
+                return res.status(500).json({ success: false, error: 'Database error' });
+            }
+
+            // Return the results
+            res.status(200).json({
+                success: true,
+                data: results
+            });
+        });
+    });
+};
+
+exports.getEmployeeById = (req, res) => {
+    const { employeeId } = req.params;
+
+    // Get the authorization header and extract the token
+    const authHeader = req.headers['authorization'];
+    const authToken = authHeader && authHeader.split(' ')[1];
+
+    // Validate that the authToken exists
+    if (!authToken) {
+        return res.status(400).json({ success: false, error: 'authToken is required' });
+    }
+
+    // Query to get farmerId from the authToken
+    const getFarmerIdSql = 'SELECT farmerId FROM FarmerInfo WHERE authToken = ?';
+    connection.query(getFarmerIdSql, [authToken], (err, results) => {
+        if (err) {
+            console.error('Error fetching farmerId from database:', err);
+            return res.status(500).json({ success: false, error: 'Database error' });
+        }
+
+        if (results.length === 0) {
+            return res.status(404).json({ success: false, error: 'Invalid authToken or farmer not found' });
+        }
+
+        const farmerId = results[0].farmerId;
+
+        // SQL query to get the employee details by employeeId and farmerId along with fieldType
+        const sqlQuery = `
+            SELECT 
+                e.employeeId,
+                e.fieldId,
+                f.fieldType,
+                e.employeeRole,
+                e.email,
+                e.firstName,
+                e.lastName,
+                e.contactNumber,
+                e.createdAt,
+                e.isPasswordChanged
+            FROM 
+                Employees e
+            JOIN
+                Fields f ON e.fieldId = f.fieldId
+            WHERE 
+                e.employeeId = ? AND e.farmerId = ?;
+        `;
+
+        // Execute the query
+        connection.query(sqlQuery, [employeeId, farmerId], (err, results) => {
+            if (err) {
+                console.error('Error fetching employee details:', err);
+                return res.status(500).json({ success: false, error: 'Database error' });
+            }
+
+            if (results.length === 0) {
+                return res.status(404).json({ success: false, error: 'Employee not found or does not belong to this farmer' });
+            }
+
+            // Return the employee details
+            res.status(200).json({
+                success: true,
+                data: results[0]
+            });
+        });
+    });
+};
+

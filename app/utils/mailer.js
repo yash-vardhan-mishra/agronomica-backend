@@ -98,12 +98,12 @@ exports.sendOtpEmailToFarmer = (farmerEmail, otp, employeeEmail) => {
  *     console.error('Error sending employee credentials:', err);
  *   });
  */
-exports.sendEmployeeCredentials = (email, employeeId, tempPassword) => {
+exports.sendEmployeeCredentials = (email, tempPassword) => {
     const mailOptions = {
         from: `"Agronomica 🌾🐄🚜" <${process.env.MAILER_USER}>`,
         to: email,
         subject: 'Your Temporary Login Credentials',
-        text: `Your employee ID is ${employeeId} and your temporary password is ${tempPassword}. Please log in and change your password immediately.`
+        text: `Your temporary password is ${tempPassword}. Please log in and change your password immediately.`
     };
 
     return new Promise((resolve, reject) => {
